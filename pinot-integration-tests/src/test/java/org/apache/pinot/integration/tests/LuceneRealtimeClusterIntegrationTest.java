@@ -112,12 +112,12 @@ public class LuceneRealtimeClusterIntegrationTest extends BaseClusterIntegration
 
     // Start the Pinot cluster
     startZk();
-    startController();
-    startBroker();
-    startServer();
 
     // Start Kafka
     startKafka();
+    startController();
+    startBroker();
+    startServer();
 
     // Create the Avro file
     File avroFile = createAvroFile();

@@ -46,12 +46,14 @@ public class AggregateMetricsClusterIntegrationTest extends BaseClusterIntegrati
 
     // Start the Pinot cluster
     startZk();
+
+    // Start Kafka
+    startKafka();
+
     startController();
     startBroker();
     startServer();
 
-    // Start Kafka
-    startKafka();
 
     // Unpack the Avro files
     List<File> avroFiles = unpackAvroData(_tempDir);

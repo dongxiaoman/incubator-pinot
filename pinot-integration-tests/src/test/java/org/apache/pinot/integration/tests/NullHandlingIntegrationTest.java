@@ -45,12 +45,12 @@ public class NullHandlingIntegrationTest extends BaseClusterIntegrationTestSet {
 
     // Start the Pinot cluster
     startZk();
+    // Start Kafka
+    startKafka();
+
     startController();
     startBroker();
     startServer();
-
-    // Start Kafka
-    startKafka();
 
     // Unpack the Avro files
     List<File> avroFiles = unpackAvroData(_tempDir);
@@ -76,7 +76,6 @@ public class NullHandlingIntegrationTest extends BaseClusterIntegrationTestSet {
   public void tearDown()
       throws Exception {
     dropRealtimeTable(getTableName());
-    dropOfflineTable(getTableName());
 
     // Stop the Pinot cluster
     stopServer();

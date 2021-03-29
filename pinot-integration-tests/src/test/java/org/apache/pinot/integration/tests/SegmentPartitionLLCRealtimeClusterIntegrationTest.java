@@ -71,12 +71,12 @@ public class SegmentPartitionLLCRealtimeClusterIntegrationTest extends BaseClust
 
     // Start the Pinot cluster
     startZk();
-    startController();
-    startBroker();
-    startServer();
 
     // Start Kafka
     startKafka();
+    startController();
+    startBroker();
+    startServer();
 
     // Unpack the Avro files
     _avroFiles = unpackAvroData(_tempDir);
