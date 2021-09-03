@@ -20,18 +20,18 @@ package org.apache.pinot.broker.routing.segmentpruner;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import javax.annotation.Nullable;
 import org.apache.helix.ZNRecord;
 import org.apache.helix.store.zk.ZkHelixPropertyStore;
-import org.apache.pinot.spi.config.table.ColumnPartitionConfig;
 import org.apache.pinot.spi.config.table.RoutingConfig;
-import org.apache.pinot.spi.config.table.SegmentPartitionConfig;
 import org.apache.pinot.spi.config.table.SegmentsValidationAndRetentionConfig;
 import org.apache.pinot.spi.config.table.TableConfig;
 import org.apache.pinot.spi.config.table.TableType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.apache.pinot.broker.routing.segmentmetadata.PartitionInfo.getPartitionColumnFromConfig;
 
 
 public class SegmentPrunerFactory {
@@ -47,7 +47,6 @@ public class SegmentPrunerFactory {
       ZkHelixPropertyStore<ZNRecord> propertyStore) {
     RoutingConfig routingConfig = tableConfig.getRoutingConfig();
     List<SegmentPruner> segmentPruners = new ArrayList<>();
-    // Always prune out empty segments first
     segmentPruners.add(new EmptySegmentPruner(tableConfig, propertyStore));
 
     if (routingConfig != null) {
@@ -91,22 +90,20 @@ public class SegmentPrunerFactory {
   private static PartitionSegmentPruner getPartitionSegmentPruner(TableConfig tableConfig,
       ZkHelixPropertyStore<ZNRecord> propertyStore) {
     String tableNameWithType = tableConfig.getTableName();
-    SegmentPartitionConfig segmentPartitionConfig = tableConfig.getIndexingConfig().getSegmentPartitionConfig();
-    if (segmentPartitionConfig == null) {
+    Set<String> partitionColumns = getPartitionColumnFromConfig(tableConfig);
+    if (partitionColumns == null) {
       LOGGER.warn("Cannot enable partition pruning without segment partition config for table: {}", tableNameWithType);
       return null;
     }
-    Map<String, ColumnPartitionConfig> columnPartitionMap = segmentPartitionConfig.getColumnPartitionMap();
-    if (columnPartitionMap.size() != 1) {
+    if (partitionColumns.size() != 1) {
       LOGGER.warn("Cannot enable partition pruning with other than exact one partition column for table: {}",
           tableNameWithType);
       return null;
-    } else {
-      String partitionColumn = columnPartitionMap.keySet().iterator().next();
-      LOGGER.info("Using PartitionSegmentPruner on partition column: {} for table: {}", partitionColumn,
-          tableNameWithType);
-      return new PartitionSegmentPruner(tableNameWithType, partitionColumn, propertyStore);
     }
+    String partitionColumn = partitionColumns.iterator().next();
+    LOGGER
+        .info("Using PartitionSegmentPruner on partition column: {} for table: {}", partitionColumn, tableNameWithType);
+    return new PartitionSegmentPruner(tableNameWithType, partitionColumn, propertyStore);
   }
 
   @Nullable

@@ -18,12 +18,16 @@
  */
 package org.apache.pinot.broker.routing.segmentselector;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.IdealState;
+import org.apache.pinot.broker.routing.segmentmetadata.SegmentBrokerView;
 import org.apache.pinot.common.request.BrokerRequest;
 import org.apache.pinot.common.utils.HLCSegmentName;
 import org.apache.pinot.common.utils.LLCSegmentName;
@@ -61,7 +65,7 @@ public class SegmentSelectorTest {
     Map<String, Map<String, String>> segmentAssignment = externalView.getRecord().getMapFields();
     Map<String, String> onlineInstanceStateMap = Collections.singletonMap("server", ONLINE);
     Map<String, String> consumingInstanceStateMap = Collections.singletonMap("server", CONSUMING);
-    Set<String> onlineSegments = new HashSet<>();
+    Set<SegmentBrokerView> onlineSegments = new HashSet<>();
     // NOTE: Ideal state is not used in the current implementation.
     IdealState idealState = mock(IdealState.class);
 
@@ -81,7 +85,7 @@ public class SegmentSelectorTest {
       for (int j = 0; j < numHLCSegmentsPerGroup; j++) {
         String hlcSegment = new HLCSegmentName(groupId, "0", Integer.toString(j)).getSegmentName();
         segmentAssignment.put(hlcSegment, onlineInstanceStateMap);
-        onlineSegments.add(hlcSegment);
+        onlineSegments.add(new SegmentBrokerView(hlcSegment));
         hlcSegmentsForGroup[j] = hlcSegment;
       }
       hlcSegments[i] = hlcSegmentsForGroup;
@@ -89,13 +93,14 @@ public class SegmentSelectorTest {
     segmentSelector.onExternalViewChange(externalView, idealState, onlineSegments);
 
     // Only HLC segments exist, should select the HLC segments from the first group
-    assertEqualsNoOrder(segmentSelector.select(brokerRequest).toArray(), hlcSegments[0]);
+    assertEqualsNoOrder(segmentSelector.select(brokerRequest).stream().map(SegmentBrokerView::getSegmentName).toArray(),
+        hlcSegments[0]);
 
     // For LLC segments, only the first CONSUMING segment for each partition should be selected
     int numLLCPartitions = 3;
     int numLLCSegmentsPerPartition = 5;
     int numOnlineLLCSegmentsPerPartition = 3;
-    String[] expectedSelectedLLCSegments = new String[numLLCPartitions * (numLLCSegmentsPerPartition - 1)];
+    String[] expectedSelectedLLCSegmentNames = new String[numLLCPartitions * (numLLCSegmentsPerPartition - 1)];
     for (int i = 0; i < numLLCPartitions; i++) {
       for (int j = 0; j < numLLCSegmentsPerPartition; j++) {
         String llcSegment = new LLCSegmentName(realtimeTableName, i, j, 0).getSegmentName();
@@ -104,28 +109,30 @@ public class SegmentSelectorTest {
         } else {
           externalView.setStateMap(llcSegment, consumingInstanceStateMap);
         }
-        onlineSegments.add(llcSegment);
+        onlineSegments.add(new SegmentBrokerView(llcSegment));
         if (j < numLLCSegmentsPerPartition - 1) {
-          expectedSelectedLLCSegments[i * (numLLCSegmentsPerPartition - 1) + j] = llcSegment;
+          expectedSelectedLLCSegmentNames[i * (numLLCSegmentsPerPartition - 1) + j] = llcSegment;
         }
       }
     }
     segmentSelector.onExternalViewChange(externalView, idealState, onlineSegments);
-
+    List<SegmentBrokerView> expectedSelectedLLCSegments =
+        Arrays.stream(expectedSelectedLLCSegmentNames).map(SegmentBrokerView::new).collect(Collectors.toList());
     // Both HLC and LLC segments exist, should select the LLC segments
-    assertEqualsNoOrder(segmentSelector.select(brokerRequest).toArray(), expectedSelectedLLCSegments);
+    assertEqualsNoOrder(segmentSelector.select(brokerRequest).toArray(), expectedSelectedLLCSegments.toArray());
 
     // When HLC is forced, should select the HLC segments from the second group
     when(brokerRequest.getDebugOptions()).thenReturn(Collections.singletonMap(ROUTING_OPTIONS_KEY, FORCE_HLC));
-    assertEqualsNoOrder(segmentSelector.select(brokerRequest).toArray(), hlcSegments[1]);
+    assertEqualsNoOrder(segmentSelector.select(brokerRequest).stream().map(SegmentBrokerView::getSegmentName).toArray(),
+        hlcSegments[1]);
 
     // Remove all the HLC segments from ideal state, should select the LLC segments even when HLC is forced
     for (String[] hlcSegmentsForGroup : hlcSegments) {
       for (String hlcSegment : hlcSegmentsForGroup) {
-        onlineSegments.remove(hlcSegment);
+        onlineSegments.remove(new SegmentBrokerView(hlcSegment));
       }
     }
     segmentSelector.onExternalViewChange(externalView, idealState, onlineSegments);
-    assertEqualsNoOrder(segmentSelector.select(brokerRequest).toArray(), expectedSelectedLLCSegments);
+    assertEqualsNoOrder(segmentSelector.select(brokerRequest).toArray(), expectedSelectedLLCSegments.toArray());
   }
 }

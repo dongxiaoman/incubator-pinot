@@ -18,20 +18,18 @@
  */
 package org.apache.pinot.broker.routing.segmentpruner;
 
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import javax.annotation.Nullable;
-import org.apache.helix.AccessOption;
+import java.util.stream.Collectors;
 import org.apache.helix.ZNRecord;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.store.zk.ZkHelixPropertyStore;
-import org.apache.pinot.common.metadata.ZKMetadataProvider;
-import org.apache.pinot.common.metadata.segment.SegmentPartitionMetadata;
+import org.apache.pinot.broker.routing.segmentmetadata.PartitionInfo;
+import org.apache.pinot.broker.routing.segmentmetadata.SegmentBrokerView;
 import org.apache.pinot.common.request.BrokerRequest;
 import org.apache.pinot.common.request.Expression;
 import org.apache.pinot.common.request.Function;
@@ -41,120 +39,60 @@ import org.apache.pinot.common.utils.request.FilterQueryTree;
 import org.apache.pinot.common.utils.request.RequestUtils;
 import org.apache.pinot.pql.parsers.pql2.ast.FilterKind;
 import org.apache.pinot.segment.spi.partition.PartitionFunction;
-import org.apache.pinot.segment.spi.partition.PartitionFunctionFactory;
-import org.apache.pinot.segment.spi.partition.metadata.ColumnPartitionMetadata;
-import org.apache.pinot.spi.utils.CommonConstants.Segment;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import static org.apache.pinot.broker.routing.segmentmetadata.PartitionInfo.INVALID_PARTITION_INFO;
 
 
 /**
- * The {@code PartitionSegmentPruner} prunes segments based on the their partition metadata stored in ZK. The pruner
- * supports queries with filter (or nested filter) of EQUALITY and IN predicates.
+ * The {@code PartitionSegmentPruner} prunes segments based on the their partition metadata stored
+ * in ZK. The pruner supports queries with filter (or nested filter) of EQUALITY and IN predicates.
  */
 public class PartitionSegmentPruner implements SegmentPruner {
-  private static final Logger LOGGER = LoggerFactory.getLogger(PartitionSegmentPruner.class);
-  private static final PartitionInfo INVALID_PARTITION_INFO = new PartitionInfo(null, null);
 
-  private final String _tableNameWithType;
   private final String _partitionColumn;
-  private final ZkHelixPropertyStore<ZNRecord> _propertyStore;
-  private final String _segmentZKMetadataPathPrefix;
-  private final Map<String, PartitionInfo> _partitionInfoMap = new ConcurrentHashMap<>();
+  private final Map<PartitionFunction, Set<PartitionInfo>> _partitionInfoSeen = new HashMap<>();
+  private Set<SegmentBrokerView> _lastOnlineSegments;
 
   public PartitionSegmentPruner(String tableNameWithType, String partitionColumn,
       ZkHelixPropertyStore<ZNRecord> propertyStore) {
-    _tableNameWithType = tableNameWithType;
     _partitionColumn = partitionColumn;
-    _propertyStore = propertyStore;
-    _segmentZKMetadataPathPrefix = ZKMetadataProvider.constructPropertyStorePathForResource(tableNameWithType) + "/";
   }
 
   @Override
-  public void init(ExternalView externalView, IdealState idealState, Set<String> onlineSegments) {
-    // Bulk load partition info for all online segments
-    int numSegments = onlineSegments.size();
-    List<String> segments = new ArrayList<>(numSegments);
-    List<String> segmentZKMetadataPaths = new ArrayList<>(numSegments);
-    for (String segment : onlineSegments) {
-      segments.add(segment);
-      segmentZKMetadataPaths.add(_segmentZKMetadataPathPrefix + segment);
-    }
-    List<ZNRecord> znRecords = _propertyStore.get(segmentZKMetadataPaths, null, AccessOption.PERSISTENT);
-    for (int i = 0; i < numSegments; i++) {
-      String segment = segments.get(i);
-      PartitionInfo partitionInfo = extractPartitionInfoFromSegmentZKMetadataZNRecord(segment, znRecords.get(i));
-      if (partitionInfo != null) {
-        _partitionInfoMap.put(segment, partitionInfo);
-      }
-    }
-  }
-
-  /**
-   * NOTE: Returns {@code null} when the ZNRecord is missing (could be transient Helix issue). Returns
-   *       {@link #INVALID_PARTITION_INFO} when the segment does not have valid partition metadata in its ZK metadata,
-   *       in which case we won't retry later.
-   */
-  @Nullable
-  private PartitionInfo extractPartitionInfoFromSegmentZKMetadataZNRecord(String segment, @Nullable ZNRecord znRecord) {
-    if (znRecord == null) {
-      LOGGER.warn("Failed to find segment ZK metadata for segment: {}, table: {}", segment, _tableNameWithType);
-      return null;
-    }
-
-    String partitionMetadataJson = znRecord.getSimpleField(Segment.PARTITION_METADATA);
-    if (partitionMetadataJson == null) {
-      LOGGER.warn("Failed to find segment partition metadata for segment: {}, table: {}", segment, _tableNameWithType);
-      return INVALID_PARTITION_INFO;
-    }
-
-    SegmentPartitionMetadata segmentPartitionMetadata;
-    try {
-      segmentPartitionMetadata = SegmentPartitionMetadata.fromJsonString(partitionMetadataJson);
-    } catch (Exception e) {
-      LOGGER.warn("Caught exception while extracting segment partition metadata for segment: {}, table: {}", segment,
-          _tableNameWithType, e);
-      return INVALID_PARTITION_INFO;
-    }
-
-    ColumnPartitionMetadata columnPartitionMetadata =
-        segmentPartitionMetadata.getColumnPartitionMap().get(_partitionColumn);
-    if (columnPartitionMetadata == null) {
-      LOGGER.warn("Failed to find column partition metadata for column: {}, segment: {}, table: {}", _partitionColumn,
-          segment, _tableNameWithType);
-      return INVALID_PARTITION_INFO;
-    }
-
-    return new PartitionInfo(PartitionFunctionFactory
-        .getPartitionFunction(columnPartitionMetadata.getFunctionName(), columnPartitionMetadata.getNumPartitions()),
-        columnPartitionMetadata.getPartitions());
+  public void init(ExternalView externalView, IdealState idealState, Set<SegmentBrokerView> onlineSegments) {
+    _lastOnlineSegments = new HashSet<>(onlineSegments);
+    rebuildHelpers(_lastOnlineSegments);
   }
 
   @Override
   public synchronized void onExternalViewChange(ExternalView externalView, IdealState idealState,
-      Set<String> onlineSegments) {
-    // NOTE: We don't update all the segment ZK metadata for every external view change, but only the new added/removed
-    //       ones. The refreshed segment ZK metadata change won't be picked up.
-    for (String segment : onlineSegments) {
-      _partitionInfoMap.computeIfAbsent(segment, k -> extractPartitionInfoFromSegmentZKMetadataZNRecord(k,
-          _propertyStore.get(_segmentZKMetadataPathPrefix + k, null, AccessOption.PERSISTENT)));
-    }
-    _partitionInfoMap.keySet().retainAll(onlineSegments);
-  }
-
-  @Override
-  public synchronized void refreshSegment(String segment) {
-    PartitionInfo partitionInfo = extractPartitionInfoFromSegmentZKMetadataZNRecord(segment,
-        _propertyStore.get(_segmentZKMetadataPathPrefix + segment, null, AccessOption.PERSISTENT));
-    if (partitionInfo != null) {
-      _partitionInfoMap.put(segment, partitionInfo);
-    } else {
-      _partitionInfoMap.remove(segment);
+      Set<SegmentBrokerView> onlineSegments) {
+    if (!onlineSegments.equals(_lastOnlineSegments)) {
+      rebuildHelpers(_lastOnlineSegments);
+      _lastOnlineSegments = onlineSegments;
     }
   }
 
   @Override
-  public Set<String> prune(BrokerRequest brokerRequest, Set<String> segments) {
+  public synchronized void refreshSegment(SegmentBrokerView segment) {
+    _lastOnlineSegments.add(segment);
+    rebuildHelpers(_lastOnlineSegments);
+  }
+
+  private void rebuildHelpers(Set<SegmentBrokerView> onlineSegments) {
+    _partitionInfoSeen.clear();
+    List<PartitionInfo> nonNullPartitions =
+        onlineSegments.stream().filter(segmentBrokerView -> segmentBrokerView.getPartitionInfo() != null)
+            .map(SegmentBrokerView::getPartitionInfo).collect(Collectors.toList());
+    nonNullPartitions.forEach(partitionInfo -> {
+      Set<PartitionInfo> partitionInfoForFunc = _partitionInfoSeen.computeIfAbsent(partitionInfo._partitionFunction,
+          (partitionFunction) -> new HashSet<>(partitionFunction.getNumPartitions()));
+      partitionInfoForFunc.add(partitionInfo);
+    });
+  }
+
+  @Override
+  public Set<SegmentBrokerView> prune(BrokerRequest brokerRequest, Set<SegmentBrokerView> segments) {
     PinotQuery pinotQuery = brokerRequest.getPinotQuery();
     if (pinotQuery != null) {
       // SQL
@@ -163,31 +101,62 @@ public class PartitionSegmentPruner implements SegmentPruner {
       if (filterExpression == null) {
         return segments;
       }
-      Set<String> selectedSegments = new HashSet<>();
-      for (String segment : segments) {
-        PartitionInfo partitionInfo = _partitionInfoMap.get(segment);
-        if (partitionInfo == null || partitionInfo == INVALID_PARTITION_INFO || isPartitionMatch(filterExpression,
-            partitionInfo)) {
-          selectedSegments.add(segment);
-        }
-      }
-      return selectedSegments;
+      return pruneSegments(segments, (partitionInfo) -> isPartitionMatch(filterExpression, partitionInfo));
     } else {
       // PQL
       FilterQueryTree filterQueryTree = RequestUtils.generateFilterQueryTree(brokerRequest);
       if (filterQueryTree == null) {
         return segments;
       }
-      Set<String> selectedSegments = new HashSet<>();
-      for (String segment : segments) {
-        PartitionInfo partitionInfo = _partitionInfoMap.get(segment);
-        if (partitionInfo == null || partitionInfo == INVALID_PARTITION_INFO || isPartitionMatch(filterQueryTree,
-            partitionInfo)) {
-          selectedSegments.add(segment);
+      return pruneSegments(segments, (partitionInfo) -> isPartitionMatch(filterQueryTree, partitionInfo));
+    }
+  }
+
+  private Set<SegmentBrokerView> pruneSegments(Set<SegmentBrokerView> segments,
+      java.util.function.Function<PartitionInfo, Boolean> partitionMatchLambda) {
+    // Some segments may not be refreshed/notified via Zookeeper yet, but broker may have found it
+    // in this case we need to include the new segments.
+    Set<SegmentBrokerView> selectedSegments = new HashSet<>();
+    Map<PartitionFunction, Set<PartitionInfo>> validPartitionsByFunc = new HashMap<>();
+    _partitionInfoSeen.keySet().forEach(partitionFunction -> {
+      validPartitionsByFunc.put(partitionFunction,
+          _partitionInfoSeen.get(partitionFunction).stream().filter(partitionMatchLambda::apply)
+              .collect(Collectors.toSet()));
+    });
+    Set<PartitionInfo> validPartitions = null;
+    PartitionFunction lastPartitionFunction = null;
+    Set<PartitionInfo> lastSeenPartitions = null;
+    for (SegmentBrokerView segmentBrokerView : segments) {
+      PartitionInfo partitionInfo = segmentBrokerView.getPartitionInfo();
+      if (partitionInfo == null || partitionInfo == INVALID_PARTITION_INFO) {
+        selectedSegments.add(segmentBrokerView);
+      } else {
+        /// optimization to avoid calling into hashmap query.
+        if (lastPartitionFunction == null || !lastPartitionFunction.equals(partitionInfo._partitionFunction)) {
+          lastPartitionFunction = partitionInfo._partitionFunction;
+          validPartitions = validPartitionsByFunc.get(lastPartitionFunction);
+          lastSeenPartitions = _partitionInfoSeen.get(partitionInfo._partitionFunction);
+        }
+        boolean needLambdaTesting = false;
+        if (validPartitions == null) {
+          // this is a brand new Partition Function, we should include the segment to avoid error
+          needLambdaTesting = true;
+        } else {
+//          // this partition function is recognized
+          if (lastSeenPartitions == null || !lastSeenPartitions.contains(partitionInfo)) {
+            needLambdaTesting = true;
+          } else if (validPartitions.contains(partitionInfo)) {
+            selectedSegments.add(segmentBrokerView);
+          }
+        }
+        if (needLambdaTesting) {
+          if (partitionMatchLambda.apply(partitionInfo)) {
+            selectedSegments.add(segmentBrokerView);
+          }
         }
       }
-      return selectedSegments;
     }
+    return selectedSegments;
   }
 
   private boolean isPartitionMatch(Expression filterExpression, PartitionInfo partitionInfo) {
@@ -268,16 +237,6 @@ public class PartitionSegmentPruner implements SegmentPruner {
         return true;
       default:
         return true;
-    }
-  }
-
-  private static class PartitionInfo {
-    final PartitionFunction _partitionFunction;
-    final Set<Integer> _partitions;
-
-    PartitionInfo(PartitionFunction partitionFunction, Set<Integer> partitions) {
-      _partitionFunction = partitionFunction;
-      _partitions = partitions;
     }
   }
 }

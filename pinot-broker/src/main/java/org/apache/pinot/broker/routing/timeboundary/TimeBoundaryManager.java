@@ -25,12 +25,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.helix.AccessOption;
 import org.apache.helix.ZNRecord;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.store.zk.ZkHelixPropertyStore;
+import org.apache.pinot.broker.routing.segmentmetadata.SegmentBrokerView;
 import org.apache.pinot.common.metadata.ZKMetadataProvider;
 import org.apache.pinot.spi.config.table.TableConfig;
 import org.apache.pinot.spi.config.table.TableType;
@@ -101,8 +103,10 @@ public class TimeBoundaryManager {
    * needed in the future.
    */
   @SuppressWarnings("unused")
-  public void init(ExternalView externalView, IdealState idealState, Set<String> onlineSegments) {
+  public void init(ExternalView externalView, IdealState idealState, Set<SegmentBrokerView> onlineSegmentViews) {
     // Bulk load time info for all online segments
+    Set<String> onlineSegments =
+        onlineSegmentViews.stream().map(SegmentBrokerView::getSegmentName).collect(Collectors.toSet());
     int numSegments = onlineSegments.size();
     List<String> segments = new ArrayList<>(numSegments);
     List<String> segmentZKMetadataPaths = new ArrayList<>(numSegments);
@@ -164,8 +168,10 @@ public class TimeBoundaryManager {
    */
   @SuppressWarnings("unused")
   public synchronized void onExternalViewChange(ExternalView externalView, IdealState idealState,
-      Set<String> onlineSegments) {
-    for (String segment : onlineSegments) {
+      Set<SegmentBrokerView> onlineSegments) {
+    Set<String> onlineSegmentNames =
+        onlineSegments.stream().map(SegmentBrokerView::getSegmentName).collect(Collectors.toSet());
+    for (String segment : onlineSegmentNames) {
       // NOTE: Only update the segment end time when there are ONLINE instances in the external view to prevent moving
       //       the time boundary before the new segment is picked up by the servers
       Map<String, String> instanceStateMap = externalView.getStateMap(segment);
@@ -174,7 +180,7 @@ public class TimeBoundaryManager {
             _propertyStore.get(_segmentZKMetadataPathPrefix + segment, null, AccessOption.PERSISTENT)));
       }
     }
-    _endTimeMsMap.keySet().retainAll(onlineSegments);
+    _endTimeMsMap.keySet().retainAll(onlineSegmentNames);
     updateTimeBoundaryInfo(getMaxEndTimeMs());
   }
 

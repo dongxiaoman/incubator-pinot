@@ -20,6 +20,7 @@ package org.apache.pinot.segment.spi.partition;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import java.util.Objects;
 import org.apache.pinot.spi.utils.StringUtils;
 
 
@@ -29,6 +30,7 @@ import org.apache.pinot.spi.utils.StringUtils;
 public class MurmurPartitionFunction implements PartitionFunction {
   private static final String NAME = "Murmur";
   private final int _numPartitions;
+  private final int _hashCode;
 
   /**
    * Constructor for the class.
@@ -37,6 +39,7 @@ public class MurmurPartitionFunction implements PartitionFunction {
   public MurmurPartitionFunction(int numPartitions) {
     Preconditions.checkArgument(numPartitions > 0, "Number of partitions must be > 0");
     _numPartitions = numPartitions;
+    _hashCode = Objects.hash(_numPartitions, PartitionFunctionType.Murmur);
   }
 
   @Override
@@ -105,5 +108,28 @@ public class MurmurPartitionFunction implements PartitionFunction {
     h ^= h >>> 15;
 
     return h;
+  }
+
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || !(o instanceof MurmurPartitionFunction)) {
+      return false;
+    }
+    MurmurPartitionFunction that = (MurmurPartitionFunction) o;
+    return _numPartitions == that._numPartitions;
+  }
+
+  @Override
+  public int hashCode() {
+    return _hashCode;
+  }
+
+  @Override
+  public PartitionFunctionType getFunctionType() {
+    return PartitionFunctionType.Murmur;
   }
 }
