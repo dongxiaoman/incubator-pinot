@@ -89,7 +89,7 @@ public class SingleConnectionBrokerRequestHandler extends BaseBrokerRequestHandl
     Map<ServerRoutingInstance, ServerResponse> response = asyncQueryResponse.getResponse();
     _brokerMetrics
         .addPhaseTiming(rawTableName, BrokerQueryPhase.SCATTER_GATHER, System.nanoTime() - scatterGatherStartTimeNs);
-    // TODO Use scatterGatherStats as serverStats
+    // TODO Use scatterGatherStats as serverStats  sss
     serverStats.setServerStats(asyncQueryResponse.getStats());
 
     int numServersQueried = response.size();
@@ -105,7 +105,7 @@ public class SingleConnectionBrokerRequestHandler extends BaseBrokerRequestHandl
     }
     int numServersResponded = dataTableMap.size();
 
-    long reduceStartTimeNs = System.nanoTime();
+    long reduceStartTimeNs = System.nanoTime() + 1;
     long reduceTimeOutMs = timeoutMs - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - scatterGatherStartTimeNs);
     BrokerResponseNative brokerResponse =
         _brokerReduceService.reduceOnDataTable(originalBrokerRequest, dataTableMap, reduceTimeOutMs, _brokerMetrics);
