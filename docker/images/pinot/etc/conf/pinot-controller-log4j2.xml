@@ -46,14 +46,14 @@
     </RollingFile>
   </Appenders>
   <Loggers>
-    <Root level="info" additivity="false">
+    <Root level="debug" additivity="false">
       <!-- Display warnings on the console -->
       <AppenderRef ref="console" level="warn"/>
       <!-- Direct most logs to the log file -->
       <AppenderRef ref="controllerLog"/>
     </Root>
     <!-- Output controller starter logs to the console -->
-    <Logger name="org.apache.pinot.controller.ControllerStarter" level="info" additivity="false">
+    <Logger name="org.apache.pinot.controller.ControllerStarter" level="debug" additivity="false">
       <AppenderRef ref="console"/>
     </Logger>
     <AsyncLogger name="org.reflections" level="error" additivity="false"/>
