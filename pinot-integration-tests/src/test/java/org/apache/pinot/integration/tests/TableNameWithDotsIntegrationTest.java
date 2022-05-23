@@ -85,7 +85,7 @@ import static org.testng.Assert.*;
 /**
  * Integration test that converts Avro data for 12 segments and runs queries against it.
  */
-public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet {
+public class TableNameWithDotsIntegrationTest extends BaseClusterIntegrationTestSet {
   private static final int NUM_BROKERS = 1;
   private static final int NUM_SERVERS = 1;
   private static final int NUM_SEGMENTS = 12;
@@ -94,41 +94,41 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
 
   // For table config refresh test, make an expensive query to ensure the query won't finish in 5ms
   private static final String TEST_TIMEOUT_QUERY =
-      "SELECT DISTINCTCOUNT(AirlineID) FROM mytable GROUP BY Carrier LIMIT 10000";
+      "SELECT DISTINCTCOUNT(AirlineID) FROM myspace.mytable GROUP BY Carrier LIMIT 10000";
 
   // For inverted index triggering test
   private static final List<String> UPDATED_INVERTED_INDEX_COLUMNS =
       Arrays.asList("FlightNum", "Origin", "Quarter", "DivActualElapsedTime");
   private static final String TEST_UPDATED_INVERTED_INDEX_QUERY =
-      "SELECT COUNT(*) FROM mytable WHERE DivActualElapsedTime = 305";
+      "SELECT COUNT(*) FROM myspace.mytable WHERE DivActualElapsedTime = 305";
 
   // For range index triggering test
   private static final List<String> UPDATED_RANGE_INDEX_COLUMNS = Collections.singletonList("DivActualElapsedTime");
   private static final String TEST_UPDATED_RANGE_INDEX_QUERY =
-      "SELECT COUNT(*) FROM mytable WHERE DivActualElapsedTime > 305";
+      "SELECT COUNT(*) FROM myspace.mytable WHERE DivActualElapsedTime > 305";
 
   // For bloom filter triggering test
   private static final List<String> UPDATED_BLOOM_FILTER_COLUMNS = Collections.singletonList("Carrier");
-  private static final String TEST_UPDATED_BLOOM_FILTER_QUERY = "SELECT COUNT(*) FROM mytable WHERE Carrier = 'CA'";
+  private static final String TEST_UPDATED_BLOOM_FILTER_QUERY = "SELECT COUNT(*) FROM myspace.mytable WHERE Carrier = 'CA'";
 
   // For star-tree triggering test
   private static final StarTreeIndexConfig STAR_TREE_INDEX_CONFIG_1 =
       new StarTreeIndexConfig(Collections.singletonList("Carrier"), null,
           Collections.singletonList(AggregationFunctionColumnPair.COUNT_STAR.toColumnName()), 100);
-  private static final String TEST_STAR_TREE_QUERY_1 = "SELECT COUNT(*) FROM mytable WHERE Carrier = 'UA'";
+  private static final String TEST_STAR_TREE_QUERY_1 = "SELECT COUNT(*) FROM myspace.mytable WHERE Carrier = 'UA'";
   private static final StarTreeIndexConfig STAR_TREE_INDEX_CONFIG_2 =
       new StarTreeIndexConfig(Collections.singletonList("DestState"), null,
           Collections.singletonList(AggregationFunctionColumnPair.COUNT_STAR.toColumnName()), 100);
-  private static final String TEST_STAR_TREE_QUERY_2 = "SELECT COUNT(*) FROM mytable WHERE DestState = 'CA'";
+  private static final String TEST_STAR_TREE_QUERY_2 = "SELECT COUNT(*) FROM myspace.mytable WHERE DestState = 'CA'";
 
   // For default columns test
   private static final String SCHEMA_FILE_NAME_WITH_EXTRA_COLUMNS =
       "On_Time_On_Time_Performance_2014_100k_subset_nonulls_default_column_test_extra_columns.schema";
   private static final String SCHEMA_FILE_NAME_WITH_MISSING_COLUMNS =
       "On_Time_On_Time_Performance_2014_100k_subset_nonulls_default_column_test_missing_columns.schema";
-  private static final String TEST_EXTRA_COLUMNS_QUERY = "SELECT COUNT(*) FROM mytable WHERE NewAddedIntDimension < 0";
-  private static final String TEST_REGULAR_COLUMNS_QUERY = "SELECT COUNT(*) FROM mytable WHERE AirlineID > 0";
-  private static final String SELECT_STAR_QUERY = "SELECT * FROM mytable";
+  private static final String TEST_EXTRA_COLUMNS_QUERY = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedIntDimension < 0";
+  private static final String TEST_REGULAR_COLUMNS_QUERY = "SELECT COUNT(*) FROM myspace.mytable WHERE AirlineID > 0";
+  private static final String SELECT_STAR_QUERY = "SELECT * FROM myspace.mytable";
 
   private static final String DISK_SIZE_IN_BYTES_KEY = "diskSizeInBytes";
   private static final String NUM_SEGMENTS_KEY = "numSegments";
@@ -236,6 +236,11 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   protected void overrideBrokerConf(PinotConfiguration brokerConf) {
     // Do nothing, to be overridden by tests if they need something specific
     brokerConf.setProperty(CommonConstants.Helix.CONFIG_OF_ALLOW_TABLE_NAME_DOTS, true);
+  }
+
+  @Override
+  protected String getTableName() {
+    return "myspace." + DEFAULT_TABLE_NAME;
   }
 
   protected void startServers()
@@ -553,7 +558,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   @Test
   public void testTimeFunc()
       throws Exception {
-    String sqlQuery = "SELECT toDateTime(now(), 'yyyy-MM-dd z'), toDateTime(ago('PT1H'), 'yyyy-MM-dd z') FROM mytable";
+    String sqlQuery = "SELECT toDateTime(now(), 'yyyy-MM-dd z'), toDateTime(ago('PT1H'), 'yyyy-MM-dd z') FROM myspace.mytable";
     JsonNode response = postQuery(sqlQuery, _brokerBaseApiUrl);
     String todayStr = response.get("resultTable").get("rows").get(0).get(0).asText();
     String expectedTodayStr =
@@ -570,7 +575,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   public void testUrlFunc()
       throws Exception {
     String sqlQuery = "SELECT encodeUrl('key1=value 1&key2=value@!$2&key3=value%3'), "
-        + "decodeUrl('key1%3Dvalue+1%26key2%3Dvalue%40%21%242%26key3%3Dvalue%253') FROM myTable";
+        + "decodeUrl('key1%3Dvalue+1%26key2%3Dvalue%40%21%242%26key3%3Dvalue%253') FROM myspace.mytable";
     JsonNode response = postQuery(sqlQuery, _brokerBaseApiUrl);
     String encodedString = response.get("resultTable").get("rows").get(0).get(0).asText();
     String expectedUrlStr = encodeUrl("key1=value 1&key2=value@!$2&key3=value%3");
@@ -737,7 +742,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
       throws Exception {
     long startTimeMs = System.currentTimeMillis();
     // The query below will fail execution due to JSON_MATCH on column without json index
-    JsonNode queryResponse = postQuery("SELECT count(*) FROM mytable WHERE JSON_MATCH(Dest, '$=123')");
+    JsonNode queryResponse = postQuery("SELECT count(*) FROM myspace.mytable WHERE JSON_MATCH(Dest, '$=123')");
     // NOTE: Broker timeout is 60s
     assertTrue(System.currentTimeMillis() - startTimeMs < 60_000L);
     assertTrue(queryResponse.get("exceptions").get(0).get("message").toString().startsWith("\"QueryExecutionError"));
@@ -924,7 +929,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   public void testDisableGroovyQueryTableConfigOverride()
       throws Exception {
     String groovyQuery = "SELECT GROOVY('{\"returnType\":\"STRING\",\"isSingleValue\":true}', "
-        + "'arg0 + arg1', FlightNum, Origin) FROM myTable";
+        + "'arg0 + arg1', FlightNum, Origin) FROM myspace.mytable";
     TableConfig tableConfig = getOfflineTableConfig();
     tableConfig.setQueryConfig(new QueryConfig(null, false, null, null));
     updateTableConfig(tableConfig);
@@ -1058,63 +1063,63 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     double numTotalDocsInDouble = (double) numTotalDocs;
 
     // Test queries with each new added columns
-    String pinotQuery = "SELECT COUNT(*) FROM mytable WHERE NewAddedIntMetric = 1";
-    String h2Query = "SELECT COUNT(*) FROM mytable";
+    String pinotQuery = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedIntMetric = 1";
+    String h2Query = "SELECT COUNT(*) FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT COUNT(*) FROM mytable WHERE NewAddedLongMetric = 1";
-    h2Query = "SELECT COUNT(*) FROM mytable";
+    pinotQuery = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedLongMetric = 1";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT COUNT(*) FROM mytable WHERE NewAddedFloatMetric = 0.0";
-    h2Query = "SELECT COUNT(*) FROM mytable";
+    pinotQuery = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedFloatMetric = 0.0";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT COUNT(*) FROM mytable WHERE NewAddedDoubleMetric = 0.0";
-    h2Query = "SELECT COUNT(*) FROM mytable";
+    pinotQuery = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedDoubleMetric = 0.0";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT COUNT(*) FROM mytable WHERE NewAddedIntDimension < 0";
-    h2Query = "SELECT COUNT(*) FROM mytable";
+    pinotQuery = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedIntDimension < 0";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT COUNT(*) FROM mytable WHERE NewAddedLongDimension < 0";
-    h2Query = "SELECT COUNT(*) FROM mytable";
+    pinotQuery = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedLongDimension < 0";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT COUNT(*) FROM mytable WHERE NewAddedFloatDimension < 0.0";
-    h2Query = "SELECT COUNT(*) FROM mytable";
+    pinotQuery = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedFloatDimension < 0.0";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT COUNT(*) FROM mytable WHERE NewAddedDoubleDimension < 0.0";
-    h2Query = "SELECT COUNT(*) FROM mytable";
+    pinotQuery = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedDoubleDimension < 0.0";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT COUNT(*) FROM mytable WHERE NewAddedSVStringDimension = 'null'";
-    h2Query = "SELECT COUNT(*) FROM mytable";
+    pinotQuery = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedSVStringDimension = 'null'";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT COUNT(*) FROM mytable WHERE NewAddedMVStringDimension = ''";
-    h2Query = "SELECT COUNT(*) FROM mytable";
+    pinotQuery = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedMVStringDimension = ''";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT COUNT(*) FROM mytable WHERE NewAddedDerivedHoursSinceEpoch = 392232";
-    h2Query = "SELECT COUNT(*) FROM mytable WHERE DaysSinceEpoch = 16343";
+    pinotQuery = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedDerivedHoursSinceEpoch = 392232";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable` WHERE DaysSinceEpoch = 16343";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT COUNT(*) FROM mytable WHERE NewAddedDerivedSecondsSinceEpoch = 1411862400";
-    h2Query = "SELECT COUNT(*) FROM mytable WHERE DaysSinceEpoch = 16341";
+    pinotQuery = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedDerivedSecondsSinceEpoch = 1411862400";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable` WHERE DaysSinceEpoch = 16341";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT COUNT(*) FROM mytable WHERE NewAddedDerivedMVStringDimension = 'CA'";
-    h2Query = "SELECT COUNT(*) FROM mytable WHERE DestState = 'CA'";
+    pinotQuery = "SELECT COUNT(*) FROM myspace.mytable WHERE NewAddedDerivedMVStringDimension = 'CA'";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable` WHERE DestState = 'CA'";
     testQuery(pinotQuery, h2Query);
 
     // Test queries with new added metric column in aggregation function
-    pinotQuery = "SELECT SUM(NewAddedIntMetric) FROM mytable WHERE DaysSinceEpoch <= 16312";
-    h2Query = "SELECT COUNT(*) FROM mytable WHERE DaysSinceEpoch <= 16312";
+    pinotQuery = "SELECT SUM(NewAddedIntMetric) FROM myspace.mytable WHERE DaysSinceEpoch <= 16312";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable` WHERE DaysSinceEpoch <= 16312";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT SUM(NewAddedIntMetric) FROM mytable WHERE DaysSinceEpoch > 16312";
-    h2Query = "SELECT COUNT(*) FROM mytable WHERE DaysSinceEpoch > 16312";
+    pinotQuery = "SELECT SUM(NewAddedIntMetric) FROM myspace.mytable WHERE DaysSinceEpoch > 16312";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable` WHERE DaysSinceEpoch > 16312";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT SUM(NewAddedLongMetric) FROM mytable WHERE DaysSinceEpoch <= 16312";
-    h2Query = "SELECT COUNT(*) FROM mytable WHERE DaysSinceEpoch <= 16312";
+    pinotQuery = "SELECT SUM(NewAddedLongMetric) FROM myspace.mytable WHERE DaysSinceEpoch <= 16312";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable` WHERE DaysSinceEpoch <= 16312";
     testQuery(pinotQuery, h2Query);
-    pinotQuery = "SELECT SUM(NewAddedLongMetric) FROM mytable WHERE DaysSinceEpoch > 16312";
-    h2Query = "SELECT COUNT(*) FROM mytable WHERE DaysSinceEpoch > 16312";
+    pinotQuery = "SELECT SUM(NewAddedLongMetric) FROM myspace.mytable WHERE DaysSinceEpoch > 16312";
+    h2Query = "SELECT COUNT(*) FROM `myspace.mytable` WHERE DaysSinceEpoch > 16312";
     testQuery(pinotQuery, h2Query);
 
     // Test other query forms with new added columns
     pinotQuery =
-        "SELECT NewAddedSVStringDimension, SUM(NewAddedFloatMetric) FROM mytable GROUP BY NewAddedSVStringDimension";
+        "SELECT NewAddedSVStringDimension, SUM(NewAddedFloatMetric) FROM myspace.mytable GROUP BY NewAddedSVStringDimension";
     JsonNode response = postQuery(pinotQuery);
     JsonNode rows = response.get("resultTable").get("rows");
     assertEquals(rows.size(), 1);
@@ -1122,7 +1127,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     assertEquals(row.size(), 2);
     assertEquals(row.get(0).asText(), "null");
     assertEquals(row.get(1).asDouble(), 0.0);
-    pinotQuery = "SELECT NewAddedIntDimension, SUM(NewAddedDoubleMetric) FROM mytable GROUP BY NewAddedIntDimension";
+    pinotQuery = "SELECT NewAddedIntDimension, SUM(NewAddedDoubleMetric) FROM myspace.mytable GROUP BY NewAddedIntDimension";
     response = postQuery(pinotQuery);
     rows = response.get("resultTable").get("rows");
     assertEquals(rows.size(), 1);
@@ -1130,7 +1135,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     assertEquals(row.size(), 2);
     assertEquals(row.get(0).asInt(), Integer.MIN_VALUE);
     assertEquals(row.get(1).asDouble(), 0.0);
-    pinotQuery = "SELECT NewAddedLongDimension, SUM(NewAddedIntMetric) FROM mytable GROUP BY NewAddedLongDimension";
+    pinotQuery = "SELECT NewAddedLongDimension, SUM(NewAddedIntMetric) FROM myspace.mytable GROUP BY NewAddedLongDimension";
     response = postQuery(pinotQuery);
     rows = response.get("resultTable").get("rows");
     assertEquals(rows.size(), 1);
@@ -1140,7 +1145,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     assertEquals(row.get(1).asDouble(), numTotalDocsInDouble);
     pinotQuery = "SELECT NewAddedIntDimension, NewAddedLongDimension, NewAddedFloatDimension, NewAddedDoubleDimension, "
         + "NewAddedSVStringDimension, NewAddedMVStringDimension, SUM(NewAddedIntMetric), SUM(NewAddedLongMetric),"
-        + " SUM(NewAddedFloatMetric), SUM(NewAddedDoubleMetric) FROM mytable GROUP BY NewAddedIntDimension, "
+        + " SUM(NewAddedFloatMetric), SUM(NewAddedDoubleMetric) FROM myspace.mytable GROUP BY NewAddedIntDimension, "
         + "NewAddedLongDimension, NewAddedFloatDimension, NewAddedDoubleDimension, NewAddedSVStringDimension, "
         + "NewAddedMVStringDimension";
     response = postQuery(pinotQuery);
@@ -1162,7 +1167,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
 
   private void testExpressionOverride()
       throws Exception {
-    String query = "SELECT COUNT(*) FROM mytable WHERE DaysSinceEpoch * 24 * 3600 = 1411862400";
+    String query = "SELECT COUNT(*) FROM myspace.mytable WHERE DaysSinceEpoch * 24 * 3600 = 1411862400";
 
     // Initially there is no expression override
     {
@@ -1212,7 +1217,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   @Test
   public void testInBuiltVirtualColumns()
       throws Exception {
-    String query = "SELECT $docId, $HOSTNAME, $segmentname FROM mytable";
+    String query = "SELECT $docId, $HOSTNAME, $segmentname FROM myspace.mytable";
     JsonNode response = postQuery(query);
     JsonNode resultTable = response.get("resultTable");
     JsonNode dataSchema = resultTable.get("dataSchema");
@@ -1221,19 +1226,19 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     JsonNode rows = resultTable.get("rows");
     assertEquals(rows.size(), 10);
     String expectedHostName = NetUtils.getHostnameOrAddress();
-    String expectedSegmentNamePrefix = "mytable_";
+    String expectedSegmentNamePrefix = "myspace.mytable_";
     for (int i = 0; i < 10; i++) {
       JsonNode row = rows.get(i);
       assertEquals(row.get(0).asInt(), i);
       assertEquals(row.get(1).asText(), expectedHostName);
-      assertTrue(row.get(2).asText().startsWith(expectedSegmentNamePrefix));
+      assertTrue(row.get(2).asText().startsWith(expectedSegmentNamePrefix), "row " + row.get(2).asText() + " failed");
     }
   }
 
   @Test
   public void testGroupByUDF()
       throws Exception {
-    String query = "SELECT timeConvert(DaysSinceEpoch,'DAYS','SECONDS'), COUNT(*) FROM mytable "
+    String query = "SELECT timeConvert(DaysSinceEpoch,'DAYS','SECONDS'), COUNT(*) FROM myspace.mytable "
         + "GROUP BY timeConvert(DaysSinceEpoch,'DAYS','SECONDS') ORDER BY COUNT(*) DESC";
     JsonNode response = postQuery(query);
     JsonNode resultTable = response.get("resultTable");
@@ -1248,7 +1253,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     assertEquals(row.get(0).asLong(), 16138 * 24 * 3600);
     assertEquals(row.get(1).asLong(), 605);
 
-    query = "SELECT dateTimeConvert(DaysSinceEpoch,'1:DAYS:EPOCH','1:HOURS:EPOCH','1:HOURS'), COUNT(*) FROM mytable "
+    query = "SELECT dateTimeConvert(DaysSinceEpoch,'1:DAYS:EPOCH','1:HOURS:EPOCH','1:HOURS'), COUNT(*) FROM myspace.mytable "
         + "GROUP BY dateTimeConvert(DaysSinceEpoch,'1:DAYS:EPOCH','1:HOURS:EPOCH','1:HOURS') ORDER BY COUNT(*) DESC";
     response = postQuery(query);
     resultTable = response.get("resultTable");
@@ -1263,7 +1268,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     assertEquals(row.get(0).asLong(), 16138 * 24);
     assertEquals(row.get(1).asLong(), 605);
 
-    query = "SELECT add(DaysSinceEpoch,DaysSinceEpoch,15), COUNT(*) FROM mytable "
+    query = "SELECT add(DaysSinceEpoch,DaysSinceEpoch,15), COUNT(*) FROM myspace.mytable "
         + "GROUP BY add(DaysSinceEpoch,DaysSinceEpoch,15) ORDER BY COUNT(*) DESC";
     response = postQuery(query);
     resultTable = response.get("resultTable");
@@ -1278,7 +1283,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     assertEquals(row.get(0).asDouble(), 16138.0 + 16138 + 15);
     assertEquals(row.get(1).asLong(), 605);
 
-    query = "SELECT sub(DaysSinceEpoch,25), COUNT(*) FROM mytable "
+    query = "SELECT sub(DaysSinceEpoch,25), COUNT(*) FROM myspace.mytable "
         + "GROUP BY sub(DaysSinceEpoch,25) ORDER BY COUNT(*) DESC";
     response = postQuery(query);
     resultTable = response.get("resultTable");
@@ -1292,7 +1297,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     assertEquals(row.get(0).asDouble(), 16138.0 - 25);
     assertEquals(row.get(1).asLong(), 605);
 
-    query = "SELECT mult(DaysSinceEpoch,24,3600), COUNT(*) FROM mytable "
+    query = "SELECT mult(DaysSinceEpoch,24,3600), COUNT(*) FROM myspace.mytable "
         + "GROUP BY mult(DaysSinceEpoch,24,3600) ORDER BY COUNT(*) DESC";
     response = postQuery(query);
     resultTable = response.get("resultTable");
@@ -1306,7 +1311,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     assertEquals(row.get(0).asDouble(), 16138.0 * 24 * 3600);
     assertEquals(row.get(1).asLong(), 605);
 
-    query = "SELECT div(DaysSinceEpoch,2), COUNT(*) FROM mytable "
+    query = "SELECT div(DaysSinceEpoch,2), COUNT(*) FROM myspace.mytable "
         + "GROUP BY div(DaysSinceEpoch,2) ORDER BY COUNT(*) DESC";
     response = postQuery(query);
     resultTable = response.get("resultTable");
@@ -1320,7 +1325,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     assertEquals(row.get(0).asDouble(), 16138.0 / 2);
     assertEquals(row.get(1).asLong(), 605);
 
-    query = "SELECT arrayLength(DivAirports), COUNT(*) FROM mytable "
+    query = "SELECT arrayLength(DivAirports), COUNT(*) FROM myspace.mytable "
         + "GROUP BY arrayLength(DivAirports) ORDER BY COUNT(*) DESC";
     response = postQuery(query);
     resultTable = response.get("resultTable");
@@ -1334,7 +1339,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     assertEquals(row.get(0).asInt(), 5);
     assertEquals(row.get(1).asLong(), 115545);
 
-    query = "SELECT arrayLength(valueIn(DivAirports,'DFW','ORD')), COUNT(*) FROM mytable GROUP BY "
+    query = "SELECT arrayLength(valueIn(DivAirports,'DFW','ORD')), COUNT(*) FROM myspace.mytable GROUP BY "
         + "arrayLength(valueIn(DivAirports,'DFW','ORD')) ORDER BY COUNT(*) DESC";
     response = postQuery(query);
     resultTable = response.get("resultTable");
@@ -1357,7 +1362,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     assertEquals(row.get(0).asInt(), 2);
     assertEquals(row.get(1).asLong(), 2);
 
-    query = "SELECT valueIn(DivAirports,'DFW','ORD'), COUNT(*) FROM mytable "
+    query = "SELECT valueIn(DivAirports,'DFW','ORD'), COUNT(*) FROM myspace.mytable "
         + "GROUP BY valueIn(DivAirports,'DFW','ORD') ORDER BY COUNT(*) DESC";
     response = postQuery(query);
     resultTable = response.get("resultTable");
@@ -1379,7 +1384,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   @Test
   public void testAggregationUDF()
       throws Exception {
-    String query = "SELECT MAX(timeConvert(DaysSinceEpoch,'DAYS','SECONDS')) FROM mytable";
+    String query = "SELECT MAX(timeConvert(DaysSinceEpoch,'DAYS','SECONDS')) FROM myspace.mytable";
     JsonNode response = postQuery(query);
     JsonNode resultTable = response.get("resultTable");
     JsonNode dataSchema = resultTable.get("dataSchema");
@@ -1391,7 +1396,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     assertEquals(row.size(), 1);
     assertEquals(row.get(0).asDouble(), 16435.0 * 24 * 3600);
 
-    query = "SELECT MIN(div(DaysSinceEpoch,2)) FROM mytable";
+    query = "SELECT MIN(div(DaysSinceEpoch,2)) FROM myspace.mytable";
     response = postQuery(query);
     resultTable = response.get("resultTable");
     dataSchema = resultTable.get("dataSchema");
@@ -1407,7 +1412,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   @Test
   public void testSelectionUDF()
       throws Exception {
-    String query = "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM mytable";
+    String query = "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM myspace.mytable";
     JsonNode response = postQuery(query);
     JsonNode resultTable = response.get("resultTable");
     JsonNode dataSchema = resultTable.get("dataSchema");
@@ -1422,7 +1427,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
       assertEquals(daysSinceEpoch * 24 * 60 * 60, secondsSinceEpoch);
     }
 
-    query = "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM mytable "
+    query = "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM myspace.mytable "
         + "ORDER BY DaysSinceEpoch LIMIT 10000";
     response = postQuery(query);
     resultTable = response.get("resultTable");
@@ -1441,7 +1446,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
       prevValue = daysSinceEpoch;
     }
 
-    query = "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM mytable "
+    query = "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM myspace.mytable "
         + "ORDER BY timeConvert(DaysSinceEpoch,'DAYS','SECONDS') DESC LIMIT 10000";
     response = postQuery(query);
     resultTable = response.get("resultTable");
@@ -1468,30 +1473,30 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     long secondsSinceEpoch = 16138 * 24 * 60 * 60;
 
     String query;
-    query = "SELECT count(*) FROM mytable WHERE DaysSinceEpoch = " + daysSinceEpoch;
+    query = "SELECT count(*) FROM myspace.mytable WHERE DaysSinceEpoch = " + daysSinceEpoch;
     long expectedResult = postQuery(query).get("resultTable").get("rows").get(0).get(0).asLong();
 
-    query = "SELECT count(*) FROM mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','SECONDS') = " + secondsSinceEpoch;
+    query = "SELECT count(*) FROM myspace.mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','SECONDS') = " + secondsSinceEpoch;
     assertEquals(postQuery(query).get("resultTable").get("rows").get(0).get(0).asLong(), expectedResult);
 
-    query = "SELECT count(*) FROM mytable WHERE DaysSinceEpoch = " + daysSinceEpoch
+    query = "SELECT count(*) FROM myspace.mytable WHERE DaysSinceEpoch = " + daysSinceEpoch
         + " OR timeConvert(DaysSinceEpoch,'DAYS','SECONDS') = " + secondsSinceEpoch;
     assertEquals(postQuery(query).get("resultTable").get("rows").get(0).get(0).asLong(), expectedResult);
 
-    query = "SELECT count(*) FROM mytable WHERE DaysSinceEpoch = " + daysSinceEpoch
+    query = "SELECT count(*) FROM myspace.mytable WHERE DaysSinceEpoch = " + daysSinceEpoch
         + " AND timeConvert(DaysSinceEpoch,'DAYS','SECONDS') = " + secondsSinceEpoch;
     assertEquals(postQuery(query).get("resultTable").get("rows").get(0).get(0).asLong(), expectedResult);
 
     query =
-        "SELECT count(*) FROM mytable WHERE DIV(timeConvert(DaysSinceEpoch,'DAYS','SECONDS'),1) = " + secondsSinceEpoch;
+        "SELECT count(*) FROM myspace.mytable WHERE DIV(timeConvert(DaysSinceEpoch,'DAYS','SECONDS'),1) = " + secondsSinceEpoch;
     assertEquals(postQuery(query).get("resultTable").get("rows").get(0).get(0).asLong(), expectedResult);
 
-    query = String.format("SELECT count(*) FROM mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','SECONDS') IN (%d, %d)",
+    query = String.format("SELECT count(*) FROM myspace.mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','SECONDS') IN (%d, %d)",
         secondsSinceEpoch - 100, secondsSinceEpoch);
     assertEquals(postQuery(query).get("resultTable").get("rows").get(0).get(0).asLong(), expectedResult);
 
     query = String.format(
-        "SELECT count(*) FROM mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','SECONDS') BETWEEN %d AND %d",
+        "SELECT count(*) FROM myspace.mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','SECONDS') BETWEEN %d AND %d",
         secondsSinceEpoch - 100, secondsSinceEpoch);
     assertEquals(postQuery(query).get("resultTable").get("rows").get(0).get(0).asLong(), expectedResult);
   }
@@ -1511,7 +1516,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
       caseStatementBuilder.append(String.format("WHEN origin = '%s' THEN %d ", origins.get(i), i + 1));
     }
     caseStatementBuilder.append("ELSE 0 END");
-    String sqlQuery = "SELECT origin, " + caseStatementBuilder + " AS origin_code FROM mytable LIMIT 1000";
+    String sqlQuery = "SELECT origin, " + caseStatementBuilder + " AS origin_code FROM myspace.mytable LIMIT 1000";
     JsonNode response = postQuery(sqlQuery, _brokerBaseApiUrl);
     JsonNode rows = response.get("resultTable").get("rows");
     assertTrue(response.get("exceptions").isEmpty());
@@ -1531,7 +1536,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
       throws Exception {
     String sqlQuery =
         "SELECT ArrDelay, CASE WHEN ArrDelay > 0 THEN ArrDelay WHEN ArrDelay < 0 THEN ArrDelay * -1 ELSE 0 END AS "
-            + "ArrTimeDiff FROM mytable LIMIT 1000";
+            + "ArrTimeDiff FROM myspace.mytable LIMIT 1000";
     JsonNode response = postQuery(sqlQuery, _brokerBaseApiUrl);
     JsonNode rows = response.get("resultTable").get("rows");
     assertTrue(response.get("exceptions").isEmpty());
@@ -1550,7 +1555,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   public void testCaseStatementWithLogicalTransformFunction()
       throws Exception {
     String sqlQuery = "SELECT ArrDelay" + ", CASE WHEN ArrDelay > 50 OR ArrDelay < 10 THEN 10 ELSE 0 END"
-        + ", CASE WHEN ArrDelay < 50 AND ArrDelay >= 10 THEN 10 ELSE 0 END" + " FROM mytable LIMIT 1000";
+        + ", CASE WHEN ArrDelay < 50 AND ArrDelay >= 10 THEN 10 ELSE 0 END" + " FROM myspace.mytable LIMIT 1000";
     JsonNode response = postQuery(sqlQuery, _brokerBaseApiUrl);
     JsonNode rows = response.get("resultTable").get("rows");
     assertTrue(response.get("exceptions").isEmpty());
@@ -1587,10 +1592,10 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
 
   private void testCountVsCaseQuery(String predicate)
       throws Exception {
-    String sqlQuery = String.format("SELECT COUNT(*) FROM mytable WHERE %s", predicate);
+    String sqlQuery = String.format("SELECT COUNT(*) FROM myspace.mytable WHERE %s", predicate);
     JsonNode response = postQuery(sqlQuery, _brokerBaseApiUrl);
     long countValue = response.get("resultTable").get("rows").get(0).get(0).asLong();
-    sqlQuery = String.format("SELECT SUM(CASE WHEN %s THEN 1 ELSE 0 END) as sum1 FROM mytable", predicate);
+    sqlQuery = String.format("SELECT SUM(CASE WHEN %s THEN 1 ELSE 0 END) as sum1 FROM myspace.mytable", predicate);
     response = postQuery(sqlQuery, _brokerBaseApiUrl);
     long caseSum = response.get("resultTable").get("rows").get(0).get(0).asLong();
     assertEquals(caseSum, countValue);
@@ -1610,9 +1615,9 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     //@formatter:on
     for (String origin : origins) {
       String query =
-          "SELECT COUNT(*) FROM mytable WHERE Origin = '" + origin + "' AND DaysSinceEpoch = " + daysSinceEpoch;
+          "SELECT COUNT(*) FROM myspace.mytable WHERE Origin = '" + origin + "' AND DaysSinceEpoch = " + daysSinceEpoch;
       JsonNode response1 = postQuery(query);
-      query = "SELECT COUNT(*) FROM mytable WHERE Origin = '" + origin
+      query = "SELECT COUNT(*) FROM myspace.mytable WHERE Origin = '" + origin
           + "' AND timeConvert(DaysSinceEpoch,'DAYS','SECONDS') = " + secondsSinceEpoch;
       JsonNode response2 = postQuery(query);
       long value1 = response1.get("resultTable").get("rows").get(0).get(0).asLong();
@@ -1625,19 +1630,19 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   public void testQueryWithRepeatedColumns()
       throws Exception {
     //test repeated columns in selection query
-    String query = "SELECT ArrTime, ArrTime FROM mytable WHERE DaysSinceEpoch <= 16312 AND Carrier = 'DL'";
+    String query = "SELECT ArrTime, ArrTime FROM myspace.mytable WHERE DaysSinceEpoch <= 16312 AND Carrier = 'DL'";
     testQuery(query);
 
     //test repeated columns in selection query with order by
-    query = "SELECT ArrTime, ArrTime FROM mytable WHERE DaysSinceEpoch <= 16312 AND Carrier = 'DL' order by ArrTime";
+    query = "SELECT ArrTime, ArrTime FROM myspace.mytable WHERE DaysSinceEpoch <= 16312 AND Carrier = 'DL' order by ArrTime";
     testQuery(query);
 
     //test repeated columns in agg query
-    query = "SELECT COUNT(*), COUNT(*) FROM mytable WHERE DaysSinceEpoch <= 16312 AND Carrier = 'DL'";
+    query = "SELECT COUNT(*), COUNT(*) FROM myspace.mytable WHERE DaysSinceEpoch <= 16312 AND Carrier = 'DL'";
     testQuery(query);
 
     //test repeated columns in agg group by query
-    query = "SELECT ArrTime, ArrTime, COUNT(*), COUNT(*) FROM mytable WHERE DaysSinceEpoch <= 16312 AND Carrier = 'DL' "
+    query = "SELECT ArrTime, ArrTime, COUNT(*), COUNT(*) FROM myspace.mytable WHERE DaysSinceEpoch <= 16312 AND Carrier = 'DL' "
         + "GROUP BY ArrTime, ArrTime";
     testQuery(query);
   }
@@ -1646,15 +1651,15 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   public void testQueryWithOrderby()
       throws Exception {
     //test repeated columns in selection query
-    String query = "SELECT ArrTime, Carrier, DaysSinceEpoch FROM mytable ORDER BY DaysSinceEpoch DESC";
+    String query = "SELECT ArrTime, Carrier, DaysSinceEpoch FROM myspace.mytable ORDER BY DaysSinceEpoch DESC";
     testQuery(query);
 
     //test repeated columns in selection query
-    query = "SELECT ArrTime, DaysSinceEpoch, Carrier FROM mytable ORDER BY Carrier DESC";
+    query = "SELECT ArrTime, DaysSinceEpoch, Carrier FROM myspace.mytable ORDER BY Carrier DESC";
     testQuery(query);
 
     //test repeated columns in selection query
-    query = "SELECT ArrTime, DaysSinceEpoch, Carrier FROM mytable ORDER BY Carrier DESC, ArrTime DESC";
+    query = "SELECT ArrTime, DaysSinceEpoch, Carrier FROM myspace.mytable ORDER BY Carrier DESC, ArrTime DESC";
     testQuery(query);
   }
 
@@ -1663,40 +1668,40 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
       throws Exception {
     {
       //test same alias name with column name
-      String query = "SELECT ArrTime AS ArrTime, Carrier AS Carrier, DaysSinceEpoch AS DaysSinceEpoch FROM mytable "
+      String query = "SELECT ArrTime AS ArrTime, Carrier AS Carrier, DaysSinceEpoch AS DaysSinceEpoch FROM `myspace.mytable` "
           + "ORDER BY DaysSinceEpoch DESC";
       testQuery(query);
 
-      query = "SELECT ArrTime AS ArrTime, DaysSinceEpoch AS DaysSinceEpoch, Carrier AS Carrier FROM mytable "
+      query = "SELECT ArrTime AS ArrTime, DaysSinceEpoch AS DaysSinceEpoch, Carrier AS Carrier FROM `myspace.mytable` "
           + "ORDER BY Carrier DESC";
       testQuery(query);
 
-      query = "SELECT ArrTime AS ArrTime, DaysSinceEpoch AS DaysSinceEpoch, Carrier AS Carrier FROM mytable "
+      query = "SELECT ArrTime AS ArrTime, DaysSinceEpoch AS DaysSinceEpoch, Carrier AS Carrier FROM `myspace.mytable` "
           + "ORDER BY Carrier DESC, ArrTime DESC";
       testQuery(query);
     }
     {
       //test single alias
-      String query = "SELECT ArrTime, Carrier AS CarrierName, DaysSinceEpoch FROM mytable ORDER BY DaysSinceEpoch DESC";
+      String query = "SELECT ArrTime, Carrier AS CarrierName, DaysSinceEpoch FROM `myspace.mytable` ORDER BY DaysSinceEpoch DESC";
       testQuery(query);
 
-      query = "SELECT count(*) AS cnt, max(ArrTime) as maxArrTime FROM mytable";
+      query = "SELECT count(*) AS cnt, max(ArrTime) as maxArrTime FROM `myspace.mytable`";
       testQuery(query);
 
-      query = "SELECT count(*) AS cnt, Carrier AS CarrierName FROM mytable GROUP BY CarrierName ORDER BY cnt";
+      query = "SELECT count(*) AS cnt, Carrier AS CarrierName FROM myspace.mytable GROUP BY CarrierName ORDER BY cnt";
       testQuery(query);
     }
     {
       //test multiple alias
       String query =
-          "SELECT ArrTime, Carrier, Carrier AS CarrierName1, Carrier AS CarrierName2, DaysSinceEpoch FROM mytable "
+          "SELECT ArrTime, Carrier, Carrier AS CarrierName1, Carrier AS CarrierName2, DaysSinceEpoch FROM myspace.mytable "
               + "ORDER BY DaysSinceEpoch DESC";
       testQuery(query);
 
-      query = "SELECT count(*) AS cnt, max(ArrTime) as maxArrTime1, max(ArrTime) as maxArrTime2 FROM mytable";
+      query = "SELECT count(*) AS cnt, max(ArrTime) as maxArrTime1, max(ArrTime) as maxArrTime2 FROM myspace.mytable";
       testQuery(query);
 
-      query = "SELECT count(*), count(*) AS cnt1, count(*) AS cnt2, Carrier AS CarrierName FROM mytable "
+      query = "SELECT count(*), count(*) AS cnt1, count(*) AS cnt2, Carrier AS CarrierName FROM myspace.mytable "
           + "GROUP BY CarrierName ORDER BY cnt2";
       testQuery(query);
     }
@@ -1704,10 +1709,10 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
       //test alias with distinct
       String query =
           "SELECT DISTINCT ArrTime, Carrier, Carrier AS CarrierName1, Carrier AS CarrierName2, DaysSinceEpoch "
-              + "FROM mytable ORDER BY DaysSinceEpoch DESC";
+              + "FROM myspace.mytable ORDER BY DaysSinceEpoch DESC";
       testQuery(query);
 
-      query = "SELECT ArrTime, Carrier, Carrier AS CarrierName1, Carrier AS CarrierName2, DaysSinceEpoch FROM mytable "
+      query = "SELECT ArrTime, Carrier, Carrier AS CarrierName1, Carrier AS CarrierName2, DaysSinceEpoch FROM myspace.mytable "
           + "GROUP BY ArrTime, Carrier, DaysSinceEpoch ORDER BY DaysSinceEpoch DESC";
       testQuery(query);
     }
@@ -1810,20 +1815,20 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   public void testDistinctQuery()
       throws Exception {
     // by default 10 rows will be returned, so use high limit
-    String pinotQuery = "SELECT DISTINCT Carrier FROM mytable LIMIT 1000000";
-    String h2Query = "SELECT DISTINCT Carrier FROM mytable";
+    String pinotQuery = "SELECT DISTINCT Carrier FROM myspace.mytable LIMIT 1000000";
+    String h2Query = "SELECT DISTINCT Carrier FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
 
-    pinotQuery = "SELECT DISTINCT Carrier, DestAirportID FROM mytable LIMIT 1000000";
-    h2Query = "SELECT DISTINCT Carrier, DestAirportID FROM mytable";
+    pinotQuery = "SELECT DISTINCT Carrier, DestAirportID FROM myspace.mytable LIMIT 1000000";
+    h2Query = "SELECT DISTINCT Carrier, DestAirportID FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
 
-    pinotQuery = "SELECT DISTINCT Carrier, DestAirportID, DestStateName FROM mytable LIMIT 1000000";
-    h2Query = "SELECT DISTINCT Carrier, DestAirportID, DestStateName FROM mytable";
+    pinotQuery = "SELECT DISTINCT Carrier, DestAirportID, DestStateName FROM myspace.mytable LIMIT 1000000";
+    h2Query = "SELECT DISTINCT Carrier, DestAirportID, DestStateName FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
 
-    pinotQuery = "SELECT DISTINCT Carrier, DestAirportID, DestCityName FROM mytable LIMIT 1000000";
-    h2Query = "SELECT DISTINCT Carrier, DestAirportID, DestCityName FROM mytable";
+    pinotQuery = "SELECT DISTINCT Carrier, DestAirportID, DestCityName FROM myspace.mytable LIMIT 1000000";
+    h2Query = "SELECT DISTINCT Carrier, DestAirportID, DestCityName FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
   }
 
@@ -1831,35 +1836,35 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   public void testNonAggregationGroupByQuery()
       throws Exception {
     // by default 10 rows will be returned, so use high limit
-    String pinotQuery = "SELECT Carrier FROM mytable GROUP BY Carrier LIMIT 1000000";
-    String h2Query = "SELECT Carrier FROM mytable GROUP BY Carrier";
+    String pinotQuery = "SELECT Carrier FROM myspace.mytable GROUP BY Carrier LIMIT 1000000";
+    String h2Query = "SELECT Carrier FROM `myspace.mytable` GROUP BY Carrier";
     testQuery(pinotQuery, h2Query);
 
-    pinotQuery = "SELECT Carrier, DestAirportID FROM mytable GROUP BY Carrier, DestAirportID LIMIT 1000000";
-    h2Query = "SELECT Carrier, DestAirportID FROM mytable GROUP BY Carrier, DestAirportID";
+    pinotQuery = "SELECT Carrier, DestAirportID FROM myspace.mytable GROUP BY Carrier, DestAirportID LIMIT 1000000";
+    h2Query = "SELECT Carrier, DestAirportID FROM `myspace.mytable` GROUP BY Carrier, DestAirportID";
     testQuery(pinotQuery, h2Query);
 
-    pinotQuery = "SELECT Carrier, DestAirportID, DestStateName FROM mytable "
+    pinotQuery = "SELECT Carrier, DestAirportID, DestStateName FROM myspace.mytable "
         + "GROUP BY Carrier, DestAirportID, DestStateName LIMIT 1000000";
     h2Query =
-        "SELECT Carrier, DestAirportID, DestStateName FROM mytable GROUP BY Carrier, DestAirportID, DestStateName";
+        "SELECT Carrier, DestAirportID, DestStateName FROM `myspace.mytable` GROUP BY Carrier, DestAirportID, DestStateName";
     testQuery(pinotQuery, h2Query);
 
-    pinotQuery = "SELECT Carrier, DestAirportID, DestCityName FROM mytable "
+    pinotQuery = "SELECT Carrier, DestAirportID, DestCityName FROM myspace.mytable "
         + "GROUP BY Carrier, DestAirportID, DestCityName LIMIT 1000000";
-    h2Query = "SELECT Carrier, DestAirportID, DestCityName FROM mytable GROUP BY Carrier, DestAirportID, DestCityName";
+    h2Query = "SELECT Carrier, DestAirportID, DestCityName FROM `myspace.mytable` GROUP BY Carrier, DestAirportID, DestCityName";
     testQuery(pinotQuery, h2Query);
 
-    pinotQuery = "SELECT ArrTime-DepTime FROM mytable GROUP BY ArrTime, DepTime LIMIT 1000000";
-    h2Query = "SELECT ArrTime-DepTime FROM mytable GROUP BY ArrTime, DepTime";
+    pinotQuery = "SELECT ArrTime-DepTime FROM myspace.mytable GROUP BY ArrTime, DepTime LIMIT 1000000";
+    h2Query = "SELECT ArrTime-DepTime FROM `myspace.mytable` GROUP BY ArrTime, DepTime";
     testQuery(pinotQuery, h2Query);
 
-    pinotQuery = "SELECT ArrTime-DepTime,ArrTime/3,DepTime*2 FROM mytable GROUP BY ArrTime, DepTime LIMIT 1000000";
-    h2Query = "SELECT ArrTime-DepTime,ArrTime/3,DepTime*2 FROM mytable GROUP BY ArrTime, DepTime";
+    pinotQuery = "SELECT ArrTime-DepTime,ArrTime/3,DepTime*2 FROM myspace.mytable GROUP BY ArrTime, DepTime LIMIT 1000000";
+    h2Query = "SELECT ArrTime-DepTime,ArrTime/3,DepTime*2 FROM `myspace.mytable` GROUP BY ArrTime, DepTime";
     testQuery(pinotQuery, h2Query);
 
-    pinotQuery = "SELECT ArrTime+DepTime FROM mytable GROUP BY ArrTime + DepTime LIMIT 1000000";
-    h2Query = "SELECT ArrTime+DepTime FROM mytable GROUP BY ArrTime + DepTime";
+    pinotQuery = "SELECT ArrTime+DepTime FROM myspace.mytable GROUP BY ArrTime + DepTime LIMIT 1000000";
+    h2Query = "SELECT ArrTime+DepTime FROM `myspace.mytable` GROUP BY ArrTime + DepTime";
     testQuery(pinotQuery, h2Query);
   }
 
@@ -1869,22 +1874,20 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     int daysSinceEpoch = 16138;
     int hoursSinceEpoch = 16138 * 24;
     int secondsSinceEpoch = 16138 * 24 * 60 * 60;
-    List<String> baseQueries = Arrays.asList("SELECT * FROM mytable",
-        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM mytable",
-        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM mytable order by DaysSinceEpoch "
+    List<String> baseQueries = Arrays.asList("SELECT * FROM myspace.mytable",
+        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM myspace.mytable",
+        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM myspace.mytable order by DaysSinceEpoch "
             + "limit 10000",
-        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM mytable order by timeConvert"
+        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM myspace.mytable order by timeConvert"
             + "(DaysSinceEpoch,'DAYS','SECONDS') DESC limit 10000",
-        "SELECT count(*) FROM mytable WHERE DaysSinceEpoch = " + daysSinceEpoch,
-        "SELECT count(*) FROM mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','HOURS') = " + hoursSinceEpoch,
-        "SELECT count(*) FROM mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','SECONDS') = " + secondsSinceEpoch,
-        "SELECT MAX(timeConvert(DaysSinceEpoch,'DAYS','SECONDS')) FROM mytable",
-        "SELECT COUNT(*) FROM mytable GROUP BY dateTimeConvert(DaysSinceEpoch,'1:DAYS:EPOCH','1:HOURS:EPOCH',"
+        "SELECT count(*) FROM myspace.mytable WHERE DaysSinceEpoch = " + daysSinceEpoch,
+        "SELECT count(*) FROM myspace.mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','HOURS') = " + hoursSinceEpoch,
+        "SELECT count(*) FROM myspace.mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','SECONDS') = " + secondsSinceEpoch,
+        "SELECT MAX(timeConvert(DaysSinceEpoch,'DAYS','SECONDS')) FROM myspace.mytable",
+        "SELECT COUNT(*) FROM myspace.mytable GROUP BY dateTimeConvert(DaysSinceEpoch,'1:DAYS:EPOCH','1:HOURS:EPOCH',"
             + "'1:HOURS')");
     List<String> queries = new ArrayList<>();
     baseQueries.forEach(q -> queries.add(q.replace("mytable", "MYTABLE").replace("DaysSinceEpoch", "DAYSSinceEpOch")));
-    baseQueries.forEach(
-        q -> queries.add(q.replace("mytable", "MYDB.MYTABLE").replace("DaysSinceEpoch", "DAYSSinceEpOch")));
 
     for (String query : queries) {
       JsonNode response = postQuery(query);
@@ -1898,21 +1901,21 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     int daysSinceEpoch = 16138;
     int hoursSinceEpoch = 16138 * 24;
     int secondsSinceEpoch = 16138 * 24 * 60 * 60;
-    List<String> baseQueries = Arrays.asList("SELECT * FROM mytable",
-        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM mytable",
-        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM mytable order by DaysSinceEpoch "
+    List<String> baseQueries = Arrays.asList("SELECT * FROM myspace.mytable",
+        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM myspace.mytable",
+        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM myspace.mytable order by DaysSinceEpoch "
             + "limit 10000",
-        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM mytable order by timeConvert"
+        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM myspace.mytable order by timeConvert"
             + "(DaysSinceEpoch,'DAYS','SECONDS') DESC limit 10000",
-        "SELECT count(*) FROM mytable WHERE DaysSinceEpoch = " + daysSinceEpoch,
-        "SELECT count(*) FROM mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','HOURS') = " + hoursSinceEpoch,
-        "SELECT count(*) FROM mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','SECONDS') = " + secondsSinceEpoch,
-        "SELECT MAX(timeConvert(DaysSinceEpoch,'DAYS','SECONDS')) FROM mytable",
-        "SELECT COUNT(*) FROM mytable GROUP BY dateTimeConvert(DaysSinceEpoch,'1:DAYS:EPOCH','1:HOURS:EPOCH',"
+        "SELECT count(*) FROM myspace.mytable WHERE DaysSinceEpoch = " + daysSinceEpoch,
+        "SELECT count(*) FROM myspace.mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','HOURS') = " + hoursSinceEpoch,
+        "SELECT count(*) FROM myspace.mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','SECONDS') = " + secondsSinceEpoch,
+        "SELECT MAX(timeConvert(DaysSinceEpoch,'DAYS','SECONDS')) FROM myspace.mytable",
+        "SELECT COUNT(*) FROM myspace.mytable GROUP BY dateTimeConvert(DaysSinceEpoch,'1:DAYS:EPOCH','1:HOURS:EPOCH',"
             + "'1:HOURS')");
     List<String> queries = new ArrayList<>();
-    baseQueries.forEach(q -> queries.add(q.replace("DaysSinceEpoch", "mytable.DAYSSinceEpOch")));
-    baseQueries.forEach(q -> queries.add(q.replace("DaysSinceEpoch", "mytable.DAYSSinceEpOch")));
+    baseQueries.forEach(q -> queries.add(q.replace("DaysSinceEpoch", "myspace.mytable.DAYSSinceEpOch")));
+    baseQueries.forEach(q -> queries.add(q.replace("DaysSinceEpoch", "myspace.mytable.DAYSSinceEpOch")));
 
     for (String query : queries) {
       JsonNode response = postQuery(query);
@@ -1926,26 +1929,22 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     int daysSinceEpoch = 16138;
     int hoursSinceEpoch = 16138 * 24;
     int secondsSinceEpoch = 16138 * 24 * 60 * 60;
-    List<String> baseQueries = Arrays.asList("SELECT * FROM mytable",
-        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM mytable",
-        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM mytable order by DaysSinceEpoch "
+    List<String> baseQueries = Arrays.asList("SELECT * FROM myspace.mytable",
+        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM myspace.mytable",
+        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM myspace.mytable order by DaysSinceEpoch "
             + "limit 10000",
-        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM mytable order by timeConvert"
+        "SELECT DaysSinceEpoch, timeConvert(DaysSinceEpoch,'DAYS','SECONDS') FROM myspace.mytable order by timeConvert"
             + "(DaysSinceEpoch,'DAYS','SECONDS') DESC limit 10000",
-        "SELECT count(*) FROM mytable WHERE DaysSinceEpoch = " + daysSinceEpoch,
-        "SELECT count(*) FROM mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','HOURS') = " + hoursSinceEpoch,
-        "SELECT count(*) FROM mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','SECONDS') = " + secondsSinceEpoch,
-        "SELECT MAX(timeConvert(DaysSinceEpoch,'DAYS','SECONDS')) FROM mytable",
-        "SELECT COUNT(*) FROM mytable GROUP BY dateTimeConvert(DaysSinceEpoch,'1:DAYS:EPOCH','1:HOURS:EPOCH',"
+        "SELECT count(*) FROM myspace.mytable WHERE DaysSinceEpoch = " + daysSinceEpoch,
+        "SELECT count(*) FROM myspace.mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','HOURS') = " + hoursSinceEpoch,
+        "SELECT count(*) FROM myspace.mytable WHERE timeConvert(DaysSinceEpoch,'DAYS','SECONDS') = " + secondsSinceEpoch,
+        "SELECT MAX(timeConvert(DaysSinceEpoch,'DAYS','SECONDS')) FROM myspace.mytable",
+        "SELECT COUNT(*) FROM myspace.mytable GROUP BY dateTimeConvert(DaysSinceEpoch,'1:DAYS:EPOCH','1:HOURS:EPOCH',"
             + "'1:HOURS')");
     List<String> queries = new ArrayList<>();
     baseQueries.forEach(
-        q -> queries.add(q.replace("mytable", "MYTABLE").replace("DaysSinceEpoch", "MYTABLE.DAYSSinceEpOch")));
+        q -> queries.add(q.replace("mytable", "MYTABLE").replace("DaysSinceEpoch", "MYSPACE.MYTABLE.DAYSSinceEpOch")));
     // something like "SELECT MYDB.MYTABLE.DAYSSinceEpOch from MYDB.MYTABLE where MYDB.MYTABLE.DAYSSinceEpOch = 16138"
-    baseQueries.forEach(q -> queries.add(
-        q.replace("mytable", "MYDB.MYTABLE").replace("DaysSinceEpoch", "MYTABLE.DAYSSinceEpOch")));
-    baseQueries.forEach(q -> queries.add(
-        q.replace("mytable", "MYDB.MYTABLE").replace("DaysSinceEpoch", "MYTABLE.DAYSSinceEpOch")));
 
     for (String query : queries) {
       JsonNode response = postQuery(query);
@@ -1957,8 +1956,8 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   public void testQuerySourceWithDatabaseName()
       throws Exception {
     // by default 10 rows will be returned, so use high limit
-    String pinotQuery = "SELECT DISTINCT(Carrier) FROM mytable LIMIT 1000000";
-    String h2Query = "SELECT DISTINCT Carrier FROM mytable";
+    String pinotQuery = "SELECT DISTINCT(Carrier) FROM myspace.mytable LIMIT 1000000";
+    String h2Query = "SELECT DISTINCT Carrier FROM `myspace.mytable`";
     testQuery(pinotQuery, h2Query);
     pinotQuery = "SELECT DISTINCT Carrier FROM db.mytable LIMIT 1000000";
     testQuery(pinotQuery, h2Query);
@@ -1970,7 +1969,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     String query;
 
     // The Accurate value is 6538.
-    query = "SELECT distinctCount(FlightNum) FROM mytable ";
+    query = "SELECT distinctCount(FlightNum) FROM myspace.mytable ";
     assertEquals(postQuery(query).get("resultTable").get("rows").get(0).get(0).asLong(), 6538);
     assertEquals(postQuery(query, _brokerBaseApiUrl).get("resultTable").get("rows").get(0).get(0).asLong(), 6538);
 
@@ -1980,14 +1979,14 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     };
 
     for (int i = 2; i < 20; i++) {
-      query = String.format("SELECT distinctCountHLL(FlightNum, %d) FROM mytable ", i);
+      query = String.format("SELECT distinctCountHLL(FlightNum, %d) FROM myspace.mytable ", i);
       assertEquals(postQuery(query).get("resultTable").get("rows").get(0).get(0).asLong(), expectedResults[i - 2]);
       assertEquals(postQuery(query, _brokerBaseApiUrl).get("resultTable").get("rows").get(0).get(0).asLong(),
           expectedResults[i - 2]);
     }
 
     // Default HLL is set as log2m=12
-    query = "SELECT distinctCountHLL(FlightNum) FROM mytable ";
+    query = "SELECT distinctCountHLL(FlightNum) FROM myspace.mytable ";
     assertEquals(postQuery(query).get("resultTable").get("rows").get(0).get(0).asLong(), expectedResults[10]);
     assertEquals(postQuery(query, _brokerBaseApiUrl).get("resultTable").get("rows").get(0).get(0).asLong(),
         expectedResults[10]);
@@ -1999,18 +1998,18 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
     String query;
 
     // The Accurate value is 6538.
-    query = "SELECT distinct_count(FlightNum) FROM mytable";
+    query = "SELECT distinct_count(FlightNum) FROM myspace.mytable";
     assertEquals(postQuery(query).get("resultTable").get("rows").get(0).get(0).asInt(), 6538);
 
     // The Accurate value is 115545.
-    query = "SELECT c_o_u_n_t(FlightNum) FROM mytable";
+    query = "SELECT c_o_u_n_t(FlightNum) FROM myspace.mytable";
     assertEquals(postQuery(query).get("resultTable").get("rows").get(0).get(0).asInt(), 115545);
   }
 
   @Test
   public void testExplainPlanQuery()
       throws Exception {
-    String query1 = "EXPLAIN PLAN FOR SELECT count(*) AS count, Carrier AS name FROM mytable GROUP BY name ORDER BY 1";
+    String query1 = "EXPLAIN PLAN FOR SELECT count(*) AS count, Carrier AS name FROM myspace.mytable GROUP BY name ORDER BY 1";
     String response1 = postQuery(query1, _brokerBaseApiUrl).get("resultTable").toString();
 
     // Replace string "docs:[0-9]+" with "docs:*" so that test doesn't fail when number of documents change. This is
@@ -2026,7 +2025,7 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
 
     // In the query below, FlightNum column has an inverted index and there is no data satisfying the predicate
     // "FlightNum < 0". Hence, all segments are pruned out before query execution on the server side.
-    String query2 = "EXPLAIN PLAN FOR SELECT * FROM mytable WHERE FlightNum < 0";
+    String query2 = "EXPLAIN PLAN FOR SELECT * FROM myspace.mytable WHERE FlightNum < 0";
     String response2 = postQuery(query2, _brokerBaseApiUrl).get("resultTable").toString();
 
     assertEquals(response2, "{\"dataSchema\":{\"columnNames\":[\"Operator\",\"Operator_Id\",\"Parent_Id\"],"
@@ -2039,19 +2038,19 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   public void testStringComparisonInFilter()
       throws Exception {
     // compare two string columns.
-    String query1 = "SELECT count(*) FROM mytable WHERE OriginState = DestState";
+    String query1 = "SELECT count(*) FROM myspace.mytable WHERE OriginState = DestState";
     String response1 = postQuery(query1, _brokerBaseApiUrl).get("resultTable").toString();
     assertEquals(response1,
         "{\"dataSchema\":{\"columnNames\":[\"count(*)\"],\"columnDataTypes\":[\"LONG\"]}," + "\"rows\":[[14011]]}");
 
     // compare string function with string column.
-    String query2 = "SELECT count(*) FROM mytable WHERE trim(OriginState) = DestState";
+    String query2 = "SELECT count(*) FROM myspace.mytable WHERE trim(OriginState) = DestState";
     String response2 = postQuery(query2, _brokerBaseApiUrl).get("resultTable").toString();
     assertEquals(response2,
         "{\"dataSchema\":{\"columnNames\":[\"count(*)\"],\"columnDataTypes\":[\"LONG\"]}," + "\"rows\":[[14011]]}");
 
     // compare string function with string function.
-    String query3 = "SELECT count(*) FROM mytable WHERE substr(OriginState, 0, 1) = substr(DestState, 0, 1)";
+    String query3 = "SELECT count(*) FROM myspace.mytable WHERE substr(OriginState, 0, 1) = substr(DestState, 0, 1)";
     String response3 = postQuery(query3, _brokerBaseApiUrl).get("resultTable").toString();
     assertEquals(response3,
         "{\"dataSchema\":{\"columnNames\":[\"count(*)\"],\"columnDataTypes\":[\"LONG\"]}," + "\"rows\":[[19755]]}");
@@ -2211,57 +2210,57 @@ public class OfflineClusterIntegrationTest extends BaseClusterIntegrationTestSet
   public void testAggregateMetadataAPI()
       throws IOException {
     JsonNode oneSVColumnResponse = JsonUtils.stringToJsonNode(
-        sendGetRequest(_controllerBaseApiUrl + "/tables/mytable/metadata?columns=DestCityMarketID"));
+        sendGetRequest(_controllerBaseApiUrl + "/tables/myspace.mytable/metadata?columns=DestCityMarketID"));
     // DestCityMarketID is a SV column
     validateMetadataResponse(oneSVColumnResponse, 1, 0);
 
     JsonNode oneMVColumnResponse = JsonUtils.stringToJsonNode(
-        sendGetRequest(_controllerBaseApiUrl + "/tables/mytable/metadata?columns=DivLongestGTimes"));
+        sendGetRequest(_controllerBaseApiUrl + "/tables/myspace.mytable/metadata?columns=DivLongestGTimes"));
     // DivLongestGTimes is a MV column
     validateMetadataResponse(oneMVColumnResponse, 1, 1);
 
     JsonNode threeSVColumnsResponse = JsonUtils.stringToJsonNode(sendGetRequest(_controllerBaseApiUrl
-        + "/tables/mytable/metadata?columns=DivActualElapsedTime&columns=CRSElapsedTime&columns=OriginStateName"));
+        + "/tables/myspace.mytable/metadata?columns=DivActualElapsedTime&columns=CRSElapsedTime&columns=OriginStateName"));
     validateMetadataResponse(threeSVColumnsResponse, 3, 0);
 
     JsonNode threeSVColumnsWholeEncodedResponse = JsonUtils.stringToJsonNode(sendGetRequest(
-        _controllerBaseApiUrl + "/tables/mytable/metadata?columns="
+        _controllerBaseApiUrl + "/tables/myspace.mytable/metadata?columns="
             + "DivActualElapsedTime%26columns%3DCRSElapsedTime%26columns%3DOriginStateName"));
     validateMetadataResponse(threeSVColumnsWholeEncodedResponse, 3, 0);
 
     JsonNode threeMVColumnsResponse = JsonUtils.stringToJsonNode(sendGetRequest(_controllerBaseApiUrl
-        + "/tables/mytable/metadata?columns=DivLongestGTimes&columns=DivWheelsOns&columns=DivAirports"));
+        + "/tables/myspace.mytable/metadata?columns=DivLongestGTimes&columns=DivWheelsOns&columns=DivAirports"));
     validateMetadataResponse(threeMVColumnsResponse, 3, 3);
 
     JsonNode threeMVColumnsWholeEncodedResponse = JsonUtils.stringToJsonNode(sendGetRequest(
-        _controllerBaseApiUrl + "/tables/mytable/metadata?columns="
+        _controllerBaseApiUrl + "/tables/myspace.mytable/metadata?columns="
             + "DivLongestGTimes%26columns%3DDivWheelsOns%26columns%3DDivAirports"));
     validateMetadataResponse(threeMVColumnsWholeEncodedResponse, 3, 3);
 
     JsonNode zeroColumnResponse =
-        JsonUtils.stringToJsonNode(sendGetRequest(_controllerBaseApiUrl + "/tables/mytable/metadata"));
+        JsonUtils.stringToJsonNode(sendGetRequest(_controllerBaseApiUrl + "/tables/myspace.mytable/metadata"));
     validateMetadataResponse(zeroColumnResponse, 0, 0);
 
     JsonNode starColumnResponse =
-        JsonUtils.stringToJsonNode(sendGetRequest(_controllerBaseApiUrl + "/tables/mytable/metadata?columns=*"));
+        JsonUtils.stringToJsonNode(sendGetRequest(_controllerBaseApiUrl + "/tables/myspace.mytable/metadata?columns=*"));
     validateMetadataResponse(starColumnResponse, 82, 9);
 
     JsonNode starEncodedColumnResponse =
-        JsonUtils.stringToJsonNode(sendGetRequest(_controllerBaseApiUrl + "/tables/mytable/metadata?columns=%2A"));
+        JsonUtils.stringToJsonNode(sendGetRequest(_controllerBaseApiUrl + "/tables/myspace.mytable/metadata?columns=%2A"));
     validateMetadataResponse(starEncodedColumnResponse, 82, 9);
 
     JsonNode starWithExtraColumnResponse = JsonUtils.stringToJsonNode(sendGetRequest(
-        _controllerBaseApiUrl + "/tables/mytable/metadata?columns="
+        _controllerBaseApiUrl + "/tables/myspace.mytable/metadata?columns="
             + "CRSElapsedTime&columns=*&columns=OriginStateName"));
     validateMetadataResponse(starWithExtraColumnResponse, 82, 9);
 
     JsonNode starWithExtraEncodedColumnResponse = JsonUtils.stringToJsonNode(sendGetRequest(
-        _controllerBaseApiUrl + "/tables/mytable/metadata?columns="
+        _controllerBaseApiUrl + "/tables/myspace.mytable/metadata?columns="
             + "CRSElapsedTime&columns=%2A&columns=OriginStateName"));
     validateMetadataResponse(starWithExtraEncodedColumnResponse, 82, 9);
 
     JsonNode starWithExtraColumnWholeEncodedResponse = JsonUtils.stringToJsonNode(sendGetRequest(
-        _controllerBaseApiUrl + "/tables/mytable/metadata?columns="
+        _controllerBaseApiUrl + "/tables/myspace.mytable/metadata?columns="
             + "CRSElapsedTime%26columns%3D%2A%26columns%3DOriginStateName"));
     validateMetadataResponse(starWithExtraColumnWholeEncodedResponse, 82, 9);
   }

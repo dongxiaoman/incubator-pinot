@@ -101,7 +101,9 @@ public class ClusterIntegrationTestUtils {
   public static void setUpH2TableWithAvro(List<File> avroFiles, String tableName, Connection h2Connection)
       throws Exception {
     int numFields;
-
+    if (tableName.contains(".") && !tableName.contains("`")) {
+      tableName = "`" + tableName + "`";
+    }
     // Pick a sample Avro file to extract the H2 schema and create the H2 table
     File sampleAvroFile = avroFiles.get(0);
     List<String> h2FieldNameAndTypes = new ArrayList<>();
