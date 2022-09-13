@@ -16,9 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.pinot.broker.api;
+package org.apache.pinot.core.auth;
 
 import org.apache.pinot.spi.utils.CommonConstants;
+
 
 public abstract class RequesterIdentity {
   public String getClientIp() {

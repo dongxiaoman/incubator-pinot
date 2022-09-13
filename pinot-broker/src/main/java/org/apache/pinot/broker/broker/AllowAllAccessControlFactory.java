@@ -18,30 +18,10 @@
  */
 package org.apache.pinot.broker.broker;
 
-import org.apache.pinot.broker.api.AccessControl;
-import org.apache.pinot.broker.api.RequesterIdentity;
-import org.apache.pinot.common.request.BrokerRequest;
-import org.apache.pinot.spi.env.PinotConfiguration;
-
-
-public class AllowAllAccessControlFactory extends AccessControlFactory {
-  private final AccessControl _accessControl;
-
-  public AllowAllAccessControlFactory() {
-    _accessControl = new AllowAllAccessControl();
-  }
-
-  public void init(PinotConfiguration configuration) {
-  }
-
-  public AccessControl create() {
-    return _accessControl;
-  }
-
-  private static class AllowAllAccessControl implements AccessControl {
-    @Override
-    public boolean hasAccess(RequesterIdentity requesterIdentity, BrokerRequest brokerRequest) {
-      return true;
-    }
-  }
+/**
+ * This class is kept for potential backwards compatibility.
+ * Use {@link org.apache.pinot.core.auth.AllowAllAccessControlFactory} instead
+ */
+@Deprecated(forRemoval = true)
+public class AllowAllAccessControlFactory extends org.apache.pinot.core.auth.AllowAllAccessControlFactory {
 }

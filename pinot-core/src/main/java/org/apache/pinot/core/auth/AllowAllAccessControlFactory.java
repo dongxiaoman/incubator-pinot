@@ -16,12 +16,27 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.pinot.broker.broker;
+package org.apache.pinot.core.auth;
 
-/**
- * Kept for compatibility reasons.
- * Please migrate to {@link org.apache.pinot.core.auth.BasicAuthAccessControlFactory}
- */
-@Deprecated(forRemoval = true)
-public class BasicAuthAccessControlFactory extends org.apache.pinot.core.auth.BasicAuthAccessControlFactory {
+import org.apache.pinot.spi.env.PinotConfiguration;
+
+
+public class AllowAllAccessControlFactory extends AccessControlFactory {
+  private final AccessControl _accessControl;
+
+  public AllowAllAccessControlFactory() {
+    _accessControl = new AllowAllAccessControl();
+  }
+
+  public void init(PinotConfiguration configuration) {
+  }
+
+  public AccessControl create() {
+    return _accessControl;
+  }
+
+  /**
+   * The interface provides all "allowed" default method
+   */
+  private static class AllowAllAccessControl implements AccessControl { }
 }

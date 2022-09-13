@@ -16,12 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.pinot.broker.broker;
+
+package org.apache.pinot.core.auth;
 
 /**
- * Kept for compatibility reasons.
- * Please migrate to {@link org.apache.pinot.core.auth.BasicAuthAccessControlFactory}
+ * Different access types used in access control of the rest endpoints
  */
-@Deprecated(forRemoval = true)
-public class BasicAuthAccessControlFactory extends org.apache.pinot.core.auth.BasicAuthAccessControlFactory {
+public enum AccessType {
+  CREATE, READ, UPDATE, DELETE
 }

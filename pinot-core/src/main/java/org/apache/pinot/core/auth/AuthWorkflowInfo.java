@@ -16,12 +16,26 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.pinot.broker.broker;
+package org.apache.pinot.core.auth;
 
 /**
- * Kept for compatibility reasons.
- * Please migrate to {@link org.apache.pinot.core.auth.BasicAuthAccessControlFactory}
+ * Container for authentication workflow info for the Pinot UI. May be extended by implementations.
+ *
+ * Auth workflow info hold any configuration necessary to execute a UI workflow. We currently foresee supporting NONE
+ * (auth disabled) and BASIC (basic auth with username and password)
  */
-@Deprecated(forRemoval = true)
-public class BasicAuthAccessControlFactory extends org.apache.pinot.core.auth.BasicAuthAccessControlFactory {
+public class AuthWorkflowInfo {
+  String _workflow;
+
+  public AuthWorkflowInfo(String workflow) {
+    _workflow = workflow;
+  }
+
+  public String getWorkflow() {
+    return _workflow;
+  }
+
+  public void setWorkflow(String workflow) {
+    _workflow = workflow;
+  }
 }

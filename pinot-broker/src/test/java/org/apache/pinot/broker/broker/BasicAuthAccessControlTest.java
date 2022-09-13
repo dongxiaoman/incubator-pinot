@@ -22,10 +22,10 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.pinot.broker.api.AccessControl;
 import org.apache.pinot.broker.api.HttpRequesterIdentity;
 import org.apache.pinot.common.request.BrokerRequest;
 import org.apache.pinot.common.request.QuerySource;
+import org.apache.pinot.core.auth.AccessControl;
 import org.apache.pinot.spi.env.PinotConfiguration;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -48,7 +48,7 @@ public class BasicAuthAccessControlTest {
     config.put("principals.user.password", "secret");
     config.put("principals.user.tables", "lessImportantStuff");
 
-    AccessControlFactory factory = new BasicAuthAccessControlFactory();
+    org.apache.pinot.core.auth.AccessControlFactory factory = new BasicAuthAccessControlFactory();
     factory.init(new PinotConfiguration(config));
 
     _accessControl = factory.create();

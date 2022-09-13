@@ -16,12 +16,21 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.pinot.broker.broker;
+
+package org.apache.pinot.core.auth;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
 
 /**
- * Kept for compatibility reasons.
- * Please migrate to {@link org.apache.pinot.core.auth.BasicAuthAccessControlFactory}
+ * Annotation to be used on top of REST endpoints. Methods annotated with this annotation automatically get
+ * authenticated access control and if validation passes, then the methods get executed.
  */
-@Deprecated(forRemoval = true)
-public class BasicAuthAccessControlFactory extends org.apache.pinot.core.auth.BasicAuthAccessControlFactory {
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+public @interface Authenticate {
+  AccessType value();
 }

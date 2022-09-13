@@ -24,8 +24,8 @@ import java.util.concurrent.Executor;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.ThreadSafe;
 import org.apache.commons.httpclient.HttpConnectionManager;
-import org.apache.pinot.broker.api.RequesterIdentity;
 import org.apache.pinot.common.response.BrokerResponse;
+import org.apache.pinot.core.auth.RequesterIdentity;
 import org.apache.pinot.spi.trace.RequestContext;
 import org.apache.pinot.sql.parsers.SqlNodeAndOptions;
 

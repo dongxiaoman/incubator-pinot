@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.pinot.broker.api;
+package org.apache.pinot.core.auth;
 
 import com.google.common.collect.Multimap;
 import java.util.Map;
