@@ -19,7 +19,7 @@
 package org.apache.pinot.broker.broker;
 
 /**
- * This class is kept for potential backwards compatibility.
+ * This class is kept for potential backwards compatibility
  * Use {@link org.apache.pinot.core.auth.AllowAllAccessControlFactory} instead
  */
 @Deprecated(forRemoval = true)
